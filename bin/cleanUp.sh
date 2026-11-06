@@ -45,7 +45,7 @@ userEmail=${15}
 excludeFailedNodes=${16}
 
 #skipEstimate=${15} # todo. remove it
-#smartSlurmJobRecordDir=${15}
+#smartSbatchJobRecordDir=${15}
 
 # if not successful, delete cromwell error file, so that the job not labeled fail
 #ls -l execution
@@ -57,8 +57,8 @@ out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smar
 
 # Optional AI support. Sourcing never fails the job: if the library or the
 # ai_call helper is missing, aiEnabled stays false and everything below is skipped.
-if [ -f ~/.smartSlurm/bin/aiHelper.sh ]; then
-    . ~/.smartSlurm/bin/aiHelper.sh 2>/dev/null
+if [ -f ~/.SmartSbatch/bin/aiHelper.sh ]; then
+    . ~/.SmartSbatch/bin/aiHelper.sh 2>/dev/null
 elif [ -f "$(dirname $0)/aiHelper.sh" ]; then
     . "$(dirname $0)/aiHelper.sh" 2>/dev/null
 elif command -v aiHelper.sh >/dev/null 2>&1; then
@@ -174,7 +174,7 @@ if [ -f ${out%.out}.adjust ]; then
    IFS=' ' read -r inputSize totalM totalT extraMemC  <<< `cat $smartSlurmLogDir/$flag.adjust`
 fi 
 
-#[ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | head -n1`
+#[ -f $smartSbatchJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSbatchJobRecordDir/stats/extraMem.$software.$ref | head -n1`
 
 
 # totalM=200; totalT=200; srunM=1000; min=200;
@@ -188,11 +188,11 @@ if [ "$memDef" -ne "$totalM" ] || [ "$minDef" -ne "$totalT" ]; then
         echo $overText
 
         # delete the .stat files, so that next time will re-generate
-        mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+        mv $smartSbatchJobRecordDir/stats/$software.$ref.* $smartSbatchJobRecordDir/stats/back 2>/dev/null
 
         # get current extraMem
         currentExtraMem=0
-        [ -f $smartSlurmJobRecordDir/stats/extraMem.$software.$ref ] && currentExtraMem=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
+        [ -f $smartSbatchJobRecordDir/stats/extraMem.$software.$ref ] && currentExtraMem=`sort -n $smartSbatchJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
 
     fi
   fi
@@ -205,37 +205,37 @@ record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$job
 echo dataToPlot,$record
 
 # delete rows other than 1 week and not COMPLETED
-#awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSlurmJobRecordDir/jobRecord.txt" > "$smartSlurmJobRecordDir/jobRecord.txt.new" && mv "$smartSlurmJobRecordDir/jobRecord.txt.new" "$smartSlurmJobRecordDir/jobRecord.txt"  
+#awk -F',' -v t="$(date -d '7 days ago' +%s)" '{d=$21; gsub(/^"|"$/,"",d); cmd="date -d \"" d "\" +%s"; cmd|getline ts; close(cmd); if(ts>t && $9!="COMPLETED") print}' "$smartSbatchJobRecordDir/jobRecords.txt" > "$smartSbatchJobRecordDir/jobRecords.txt.new" && mv "$smartSbatchJobRecordDir/jobRecords.txt.new" "$smartSbatchJobRecordDir/jobRecords.txt"  
 # The first condition keeps the header row: it has fewer fields than a record,
 # so $21 is empty and $9 is not COMPLETED, and it would otherwise be dropped here.
-awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if((NR==1 && $1 !~ /^[0-9]+$/) || $21 > t || $9 == "COMPLETED") print $0 }' $smartSlurmJobRecordDir/jobRecord.txt > $smartSlurmJobRecordDir/jobRecord.txt.new && mv $smartSlurmJobRecordDir/jobRecord.txt.new $smartSlurmJobRecordDir/jobRecord.txt
+awk -F"," -v t="$(date -d '7 days ago' +%s)" '{ if((NR==1 && $1 !~ /^[0-9]+$/) || $21 > t || $9 == "COMPLETED") print $0 }' $smartSbatchJobRecordDir/jobRecords.txt > $smartSbatchJobRecordDir/jobRecords.txt.new && mv $smartSbatchJobRecordDir/jobRecords.txt.new $smartSbatchJobRecordDir/jobRecords.txt
 
 
-records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSlurmJobRecordDir/jobRecord.txt | sort -u -n`
+records=`awk -F"," -v a=$2 -v b=$3 '{ if($12 == a && $13 == b) {print $2, $7 }}' $smartSbatchJobRecordDir/jobRecords.txt | sort -u -n`
 
 #   less than 500 records or current one is larger than all old data and not exist already
 if [[ "$jobStatus" == "COMPLETED" ]] && [[ "$(echo $records | wc -l)" -lt 500 || "`echo $records | tail -n1 | cut -d' ' -f1`" -lt "$inputSize" ]] && ! echo $records | grep "$inputSize $srunM"; then
     #if [ ! -f ${out%.out}.startFromCheckpoint ]; then
-        [ -z "$START" ] || echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
-        echo -e "Added this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
+        [ -z "$START" ] || echo $record >> $smartSbatchJobRecordDir/jobRecords.txt
+        echo -e "Added this line to $smartSbatchJobRecordDir/jobRecords.txt:\n$record"
     #else
-    #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSlurmJobRecordDir/jobRecord.txt:\n$record"
+    #    echo -e "Has ${out%.out}.startFromCheckpoint. Did not add this line to $smartSbatchJobRecordDir/jobRecords.txt:\n$record"
     #fi
-    mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back 2>/dev/null
+    mv $smartSbatchJobRecordDir/stats/$software.$ref.* $smartSbatchJobRecordDir/stats/back 2>/dev/null
 else
-    echo Did not add this record to $smartSlurmJobRecordDir/jobRecord.txt
+    echo Did not add this record to $smartSbatchJobRecordDir/jobRecords.txt
 fi
 
 
-# the last column is date. first get the mofification time for $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
+# the last column is date. first get the mofification time for $smartSbatchJobRecordDir/stats/$software.$ref.mem.stat file and see how many records in jobrecord.txt have rows with time new than that 
 # if more than 10, then delete the stat file ( will re-generate next time to estimate)
-if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then
-    tFile=`stat -c %Y $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat`
+if [ -f $smartSbatchJobRecordDir/stats/$software.$ref.mem.stat ]; then
+    tFile=`stat -c %Y $smartSbatchJobRecordDir/stats/$software.$ref.mem.stat`
 
-    # todo: time format in jobRecord.txt is not consistent. some are in seconds, some are in date format. need to fix it.  
-    newRecords=`awk -F"," -v prog=$2 -v refx=$3 -v t="$tFile" '{ split($21, d, " "); if( d[2] > t && $12 == prog && $13 == refx) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+    # todo: time format in jobRecords.txt is not consistent. some are in seconds, some are in date format. need to fix it.  
+    newRecords=`awk -F"," -v prog=$2 -v refx=$3 -v t="$tFile" '{ split($21, d, " "); if( d[2] > t && $12 == prog && $13 == refx) print $0}' $smartSbatchJobRecordDir/jobRecords.txt | wc -l`
     if [ $newRecords -gt 10 ]; then
-        mv $smartSlurmJobRecordDir/stats/$software.$ref.*.stat $smartSlurmJobRecordDir/stats/back 2>/dev/null
+        mv $smartSbatchJobRecordDir/stats/$software.$ref.*.stat $smartSbatchJobRecordDir/stats/back 2>/dev/null
     fi
 fi
 
@@ -263,26 +263,26 @@ if [ ! -f $succFile ]; then
 
         record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,$jobStatus,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
 
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.txt
+        echo $record >> $smartSbatchJobRecordDir/jobRecords.txt
 
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if(  $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if(  $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSbatchJobRecordDir/jobRecords.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
 
 
         # delete all record about the step is thare more than 3 failed jobs in last hour
         if [ $recentFails -gt $numberOfFailedJobsLastHourToRecalculateStats ]; then
-            backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
+            backup=$smartSbatchJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
             if [ ! -f $backup ]; then 
-                mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
-                echo "Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref." 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
-                #ls -l $smartSlurmJobRecordDir/ 
-                #ls -l $smartSlurmJobRecordDir/stats/
-                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+                mv $smartSbatchJobRecordDir/jobRecords.txt $backup 2>/dev/null
+                echo "Too many fails in the last hour for $software $ref, backing jobRecords.txt to# $backup and remove all records aboutn $software $ref." 2>/dev/null   
+                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSbatchJobRecordDir/jobRecords.txt 
+                #ls -l $smartSbatchJobRecordDir/ 
+                #ls -l $smartSbatchJobRecordDir/stats/
+                rm $smartSbatchJobRecordDir/stats/$software.$ref.* 2>/dev/null
             fi
-            # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
-            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+            # email user to review jobRecords.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecords.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
 
         fi
 
@@ -293,15 +293,15 @@ if [ ! -f $succFile ]; then
         if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
             echo "Processing memory adjustment for $jobStatus"
             echo "old extraMem:"
-            cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
+            cat $smartSbatchJobRecordDir/stats/extraMem.$software.$ref
 
             extraMemN=$(( totalM - srunM + 1 ))
-            maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
+            maxExtra=`sort -n $smartSbatchJobRecordDir/stats/extraMem.$software.$ref | tail -n1 | cut -d' ' -f1`
             [ -z "$maxExtra" ] && maxExtra=5
-            [ $extraMemN -gt $maxExtra ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $smartSlurmJobRecordDir/stats/extraMem.$software.$ref && maxExtra=$extraMemN
+            [ $extraMemN -gt $maxExtra ] && echo $extraMemN $totalM $inputSize $SLURM_JOBID >> $smartSbatchJobRecordDir/stats/extraMem.$software.$ref && maxExtra=$extraMemN
 
             echo "new extraMem:"
-            cat $smartSlurmJobRecordDir/stats/extraMem.$software.$ref
+            cat $smartSbatchJobRecordDir/stats/extraMem.$software.$ref
 
             mv ${out%.out}.likelyCheckpointOOM ${out%.out}.likelyCheckpointOOM.old 2>/dev/null
             
@@ -488,10 +488,10 @@ if [ ! -f $succFile ]; then
 
         # Clean up statistics files
         if [ "$inputs" == "none" ]; then
-            mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
+            mv $smartSbatchJobRecordDir/stats/$software.$ref.* $smartSbatchJobRecordDir/stats/back  2>/dev/null
         else
-            if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ] || [ -f $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
-                mv $smartSlurmJobRecordDir/stats/$software.$ref.* $smartSlurmJobRecordDir/stats/back  2>/dev/null
+            if [ -f $smartSbatchJobRecordDir/stats/$software.$ref.mem.stat ] || [ -f $smartSbatchJobRecordDir/stats/$software.$ref.time.stat ]; then
+                mv $smartSbatchJobRecordDir/stats/$software.$ref.* $smartSbatchJobRecordDir/stats/back  2>/dev/null
             fi
         fi
 
@@ -499,9 +499,9 @@ if [ ! -f $succFile ]; then
         echo Not sure why this job failed. Did not run out of time or memory. Please check for yourself.
         
         if [ ! -z "$excludeFailedNodes" ]; then 
-            echo -n ,$SLURMD_NODENAME >> $smartSlurmJobRecordDir/stats/badNodes.$software.$ref
+            echo -n ,$SLURMD_NODENAME >> $smartSbatchJobRecordDir/stats/badNodes.$software.$ref
             
-            badNodeList="-x `cat $smartSlurmJobRecordDir/stats/badNodes.$software.$ref`"
+            badNodeList="-x `cat $smartSbatchJobRecordDir/stats/badNodes.$software.$ref`"
    
             export myPartition=$partition
             export myTime=$totalT
@@ -598,25 +598,25 @@ if [ ! -f $succFile ]; then
 # job was successful
 elif [ ! -z "$overEstimate" ]; then
         record="$SLURM_JOBID,$inputSize,$memDef,$minDef,$totalM,$totalT,$srunM,$min,OverEstimate,$USER,$memSacct,$2,$ref,$flag,$core,$extraMemC,$defaultExtraTime,0$ratioM,0$ratioT,`date`,`date +%s`" 
-        echo $record >> $smartSlurmJobRecordDir/jobRecord.oom.oot.over.txt
+        echo $record >> $smartSbatchJobRecordDir/jobRecord.oom.oot.over.txt
 
     
-        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if( $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSlurmJobRecordDir/jobRecord.txt | wc -l`
+        recentFails=`awk -F"," -v a=$2 -v b=$3 -v t="$(date -d '1 hour ago' +%s)" '{ if( $9 != "COMPLETED" && $21 > t && $12 == a && $13 == b ) print $0}' $smartSbatchJobRecordDir/jobRecords.txt | wc -l`
         echo recentFails in the last hour for $software $ref: $recentFails
 
         # delete all record about the step is thare more than 3 failed jobs in last hour
         if [ $recentFails -gt $numberOfFailedJobsLastHourToRecalculateStats ]; then
-            backup=$smartSlurmJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
+            backup=$smartSbatchJobRecordDir/jobRecord.back.$(date +%Y-%m-%d_%H-%M-%S).txt 
             if [ ! -f $backup ]; then 
-                mv $smartSlurmJobRecordDir/jobRecord.txt $backup 2>/dev/null
-                echo Too many fails in the last hour for $software $ref, backing jobRecord.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
-                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSlurmJobRecordDir/jobRecord.txt 
-                #ls -l $smartSlurmJobRecordDir/ 
-                #ls -l $smartSlurmJobRecordDir/stats/
-                rm $smartSlurmJobRecordDir/stats/$software.$ref.* 2>/dev/null
+                mv $smartSbatchJobRecordDir/jobRecords.txt $backup 2>/dev/null
+                echo Too many fails in the last hour for $software $ref, backing jobRecords.txt to# $backup and remove all records aboutn $software $ref. 2>/dev/null   
+                awk -F"," -v a=$2 -v b=$3 '{ if ($12 != a && $13 != b) print $0}' $backup > $smartSbatchJobRecordDir/jobRecords.txt 
+                #ls -l $smartSbatchJobRecordDir/ 
+                #ls -l $smartSbatchJobRecordDir/stats/
+                rm $smartSbatchJobRecordDir/stats/$software.$ref.* 2>/dev/null
             fi
-            # email user to review jobRecord.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
-            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecord.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
+            # email user to review jobRecords.txt and related stat files, because there are too many fails in the last hour for this software and ref, which might indicate some systemic issue with the job or the cluster
+            echo -e "There are $recentFails fails in the last hour for $software $ref, which might indicate some systemic issue with the job or the cluster. All job records for this software and ref have been backed up to $backup and removed from jobRecords.txt." | mail -s "!!!Too many oom/oot/over-estimates for $software $ref" $USER
 
         fi
 
@@ -730,9 +730,9 @@ aiSummaryFile=$smartSlurmLogDir/ai.$SLURM_JOBID.txt
 if [[ "$jobStatus" != "COMPLETED" ]] && [[ "$jobStatus" != "Canceled" ]] && aiEnabled; then
     echo Asking AI to analyze failed job $SLURM_JOBID, status: $jobStatus ...
     aiSummary=`{
-        echo "A Slurm job managed by SmartSlurm did not complete. Explain in at most 12 lines what went wrong and how to fix it. Be concrete about memory and run-time numbers when they matter."
+        echo "A Slurm job managed by SmartSbatch did not complete. Explain in at most 12 lines what went wrong and how to fix it. Be concrete about memory and run-time numbers when they matter."
         echo ""
-        echo "=== Job status determined by SmartSlurm: $jobStatus ==="
+        echo "=== Job status determined by SmartSbatch: $jobStatus ==="
         echo "Program: $software   Reference: $ref   Input size: $inputSize"
         echo "Reserved memory: ${totalM}M   Reserved time: ${totalT}min   Cores: $core   Partition: $partition"
         echo "Measured peak memory: ${srunM}M   Measured run-time: ${min}min"
@@ -782,11 +782,11 @@ else
    #toSend="$s\n$toSend"
 fi
 
-toSend="SmartSlurm Saved $savedDollar by dynamic allocation of memory for this job.\n$toSend"
-[ -z "$snakemakeSuccFlag" ] && toSend="SmartSlurm Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
+toSend="SmartSbatch Saved $savedDollar by dynamic allocation of memory for this job.\n$toSend"
+[ -z "$snakemakeSuccFlag" ] && toSend="SmartSbatch Saved $savedDollar1 by split workflow into steps from this job.\n$toSend"
 
-toSend="So far, SmartSlurm Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
-[ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSlurm Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
+toSend="So far, SmartSbatch Saved $savedDollar3 by dynamic allocation of memory for this run.\n$toSend"
+[ -z "$snakemakeSuccFlag" ] && toSend="So far, SmartSbatch Saved $savedDollar4 by split workflow into steps from this run. \n$toSend"
 
 if [ -f "$err" ]; then
     actualsize=`wc -c $err`
@@ -814,10 +814,10 @@ fi
 
 
 if [[ $USER != ld32 ]]; then
-    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png ld32
-    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ld32
+    if [ -f $smartSbatchJobRecordDir/stats/$software.$ref.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSbatchJobRecordDir/stats/$software.$ref.mem.png -a $smartSbatchJobRecordDir/stats/$software.$ref.time.png ld32
+    elif [ -f $smartSbatchJobRecordDir/stats/back/$software.$ref.time.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSbatchJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSbatchJobRecordDir/stats/back/$software.$ref.time.png ld32
     else
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png ld32
     fi
@@ -844,11 +844,11 @@ elif [[ "$lessEmail" == "noSuccEmail" ]] && [[ "$s" == *Succ* ]]; then
  
 elif [ -f $smartSlurmLogDir/dag.png ]; then
     #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
+    if [ -f $smartSbatchJobRecordDir/stats/$software.$ref.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSbatchJobRecordDir/stats/$software.$ref.mem.png -a $smartSbatchJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
             { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
-    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
+    elif [ -f $smartSbatchJobRecordDir/stats/back/$software.$ref.time.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSbatchJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSbatchJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
             { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
     elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/dag.png -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \
@@ -859,11 +859,11 @@ elif [ -f $smartSlurmLogDir/dag.png ]; then
     fi
 else 
     #echo -e "$toSend" | sendmail `head -n 1 ~/.forward`
-    if [ -f $smartSlurmJobRecordDir/stats/$software.$ref.mem.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
+    if [ -f $smartSbatchJobRecordDir/stats/$software.$ref.mem.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSbatchJobRecordDir/stats/$software.$ref.mem.png -a $smartSbatchJobRecordDir/stats/$software.$ref.time.png $USER && echo email sent1 || \
             { echo Email not sent1.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent11. || echo Email still not sent11; }
-    elif [ -f $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png ]; then
-        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSlurmJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
+    elif [ -f $smartSbatchJobRecordDir/stats/back/$software.$ref.time.png ]; then
+        echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png -a $smartSbatchJobRecordDir/stats/back/$software.$ref.mem.png -a $smartSbatchJobRecordDir/stats/back/$software.$ref.time.png $USER && echo email sent2 || \
             { echo Email not sent2.; echo -e "Subject: $s\n$toSend" | sendmail `head -n 1 ~/.forward` && echo Email sent21. || echo Email still not sent21; }
     elif [ -f $smartSlurmLogDir/job_$SLURM_JOBID.mem.png ]; then
         echo -e "$toSend" | mail -s "$s" -a $smartSlurmLogDir/job_$SLURM_JOBID.mem.png -a $smartSlurmLogDir/job_$SLURM_JOBID.cpu.png -a $smartSlurmLogDir/$tm.barchartMem.png -a $smartSlurmLogDir/$tm.barchartTime.png $USER && echo email sent3 || \

@@ -4,20 +4,18 @@
 #set -e
 
 # Job record folder can be shared with a group of users.
-# Or user can have their own copy of config as: ~/.smartSlurm/config/config.txt, 
-# User can modify ~/.smartSlurm/config/config.txt anyway they want. User's setting overwrite the group settting. 
-# export smartSlurmJobRecordDir=/data/groupABC/smartSlurm
-export smartSlurmJobRecordDir=$HOME/.smartSlurm 
+# Or user can have their own copy of config as: ~/.SmartSbatch/config/config.txt, 
+# User can modify ~/.SmartSbatch/config/config.txt anyway they want. User's setting overwrite the group settting. 
+# export smartSbatchJobRecordDir=/data/groupABC/smartSlurm
+export smartSbatchJobRecordDir=$HOME/.SmartSbatch 
 
 export smartSlurmLogDir=smartSlurmLog
 
 # input folder name
-export smartSlurmInputDir=inputSmartSlurm
+export smartSlurmInputDir=inputSmartSbatch
 
 # output folder path 
-export smartSlurmOutputDir=$PWD/outputSmartSlurm
-
-export firstBatchCount=5
+export smartSlurmOutputDir=$PWD/outputSmartSbatch
 
 export defaultMem=4096  # in M
 export defaultTime=120  # in min
@@ -35,7 +33,7 @@ export numberOfFailedJobsLastHourToRecalculateStats=5
 export smartSlurmAiEnabled=yes
 
 # Path to the setuid ai_call helper. Leave empty to auto-detect
-# (~/.smartSlurm/bin/ai_call, then the copy next to the SmartSlurm scripts).
+# (~/.SmartSbatch/bin/ai_call, then the copy next to the SmartSbatch scripts).
 export smartSlurmAiCall=
 
 # Give up on an AI answer after this many seconds, so jobs are never delayed.
@@ -46,14 +44,6 @@ export smartSlurmAiTimeout=90
 # is being submitted.
 export smartSlurmAiMinRecords=10
 export smartSlurmAiReviewTimeout=30
-
-# AI validation of a pipeline, printed after conversion and before any job is
-# submitted, so a wrong dependency is caught early. Set to no to skip it.
-export smartSlurmAiValidatePipeline=yes
-
-# Pipeline validation reasons over the whole script, so it needs longer than
-# the curve review above.
-export smartSlurmAiValidateTimeout=90
 
 # AI review of job records in reviewJobRecords.py. The user asks for this one
 # explicitly and waits for it, and reasoning over a whole record set is slow,

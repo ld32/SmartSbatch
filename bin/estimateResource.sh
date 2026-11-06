@@ -29,8 +29,8 @@ mem=""; min=""
 
 # Optional AI review of a freshly fitted curve. If the library or the ai_call
 # helper is missing, aiEnabled stays false and estimation runs exactly as before.
-if [ -f ~/.smartSlurm/bin/aiHelper.sh ]; then
-    . ~/.smartSlurm/bin/aiHelper.sh 2>/dev/null
+if [ -f ~/.SmartSbatch/bin/aiHelper.sh ]; then
+    . ~/.SmartSbatch/bin/aiHelper.sh 2>/dev/null
 elif [ -f "$(dirname $0)/aiHelper.sh" ]; then
     . "$(dirname $0)/aiHelper.sh" 2>/dev/null
 elif command -v aiHelper.sh >/dev/null 2>&1; then
@@ -43,7 +43,7 @@ command -v aiEnabled >/dev/null 2>&1 || aiEnabled() { return 1; }
 [ -z "$smartSlurmAiMinRecords" ] && smartSlurmAiMinRecords=10
 [ -z "$smartSlurmAiReviewTimeout" ] && smartSlurmAiReviewTimeout=30
 
-aiReviewFile=$smartSlurmJobRecordDir/stats/$program.$ref.aiReview.txt
+aiReviewFile=$smartSbatchJobRecordDir/stats/$program.$ref.aiReview.txt
 
 # aiReviewFit <label> <dataFile> <statFile> [dataFile2] [statFile2]
 # Asks AI whether the linear fit is trustworthy and flags outliers or regime
@@ -62,7 +62,7 @@ aiReviewFit() {
     }
 
     aiReview=`smartSlurmAiTimeout=$smartSlurmAiReviewTimeout; {
-        echo "SmartSlurm just fitted a straight line to historical Slurm job records to predict memory and run-time. Review the fit in at most 10 lines: say whether the linear fit is trustworthy, and flag any outliers, non-linearity or regime change (for example a software or reference change) that would make predictions wrong. Name the specific data points that look wrong. Do not repeat the numbers back without a conclusion."
+        echo "SmartSbatch just fitted a straight line to historical Slurm job records to predict memory and run-time. Review the fit in at most 10 lines: say whether the linear fit is trustworthy, and flag any outliers, non-linearity or regime change (for example a software or reference change) that would make predictions wrong. Name the specific data points that look wrong. Do not repeat the numbers back without a conclusion."
         echo ""
         echo "Program: $program   Reference: $ref   Data: $aiLabel"
         echo "Record count: $aiRecords"
@@ -98,7 +98,7 @@ aiReviewFit() {
     return 1
 }
 
-[ -f $smartSlurmJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSlurmJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$defaultExtraMem
+[ -f $smartSbatchJobRecordDir/stats/extraMem.$program.$ref ] && maxExtra=`sort -n $smartSbatchJobRecordDir/stats/extraMem.$program.$ref | tail -n1 | cut -d' ' -f1` && extraMem=$(( $maxExtra * 2 )) || extraMem=$defaultExtraMem
 
 [ -z "$adjust" ] && resAjust="#Original mem $defaultMem M, Original time: $defaultMin mins\n"
 
@@ -106,23 +106,23 @@ if [ $inputs == none ]; then
     inputSize=0
     resAjust="$resAjust#This job does not have input.\n"
 
-    rows=`( wc -l $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
+    rows=`( wc -l $smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0 ) | awk '{print $1}'`
     #echoerr rows  $rows
     # empty or more than 60 minutes but less than 4 records
-    if test `find $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
-        mkdir -p $smartSlurmJobRecordDir/stats/
+    if test `find $smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
+        mkdir -p $smartSbatchJobRecordDir/stats/
 
-        grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $7, $8 }}' | uniq > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput
+        grep COMPLETED $smartSbatchJobRecordDir/jobRecords.txt 2>/dev/null | awk -F, -v a=$program -v b=$ref '{ if($12 == a && $13 == b) {print $7, $8 }}' | uniq > $smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput
 
         # make plot and calculate statistics
-        gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.memTime.stat.noInput
+        gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSbatchJobRecordDir/stats/$program.$ref.stat.noInput.png"'"; set title "Time vs. Memory Usage"; set xlabel "Time(Min)"; set ylabel "Memory(M)"; f(x)=a*x+b; fit f(x) "'"$smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' | sed 's/:/=/' | sed 's/ //g' > $smartSbatchJobRecordDir/stats/$program.$ref.memTime.stat.noInput
 
-        rows=`{ wc -l $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
+        rows=`{ wc -l $smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput 2>/dev/null || echo 0; } | cut -f 1 -d " "`
 
         # Only after a rebuild, so submissions are not slowed down by an AI call each time.
         aiReviewFit "memory and run-time of a job without input" \
-            $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput \
-            $smartSlurmJobRecordDir/stats/$program.$ref.memTime.stat.noInput
+            $smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput \
+            $smartSbatchJobRecordDir/stats/$program.$ref.memTime.stat.noInput
     fi
 
     # at least 3 records
@@ -130,11 +130,11 @@ if [ $inputs == none ]; then
 
         cutoffRow=$(( ($rows - 1)  / 10  + 1)) # 90th percentile
 
-        mem=`cut -d' ' -f1 $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
+        mem=`cut -d' ' -f1 $smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
 
         mem=$((${mem/\.*/} + extraMem))
 
-        min=`cut -d' ' -f2 $smartSlurmJobRecordDir/stats/$program.$ref.memTime.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
+        min=`cut -d' ' -f2 $smartSbatchJobRecordDir/stats/$program.$ref.memTime.noInput | sort -nr | tr '\n' ' ' | cut -f $cutoffRow -d " "`
 
         min=$((${min/\.*/} + defaultExtraTime))
 
@@ -159,7 +159,7 @@ else
         resAjust="$resAjust#InputSize: $inputSize\n"
 
         #rm ~/.rcbio/$program.$ref.mem.stat # for testing
-        if [ -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
+        if [ -f $smartSbatchJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
             
             if [ -f .command.sh ] && [ -f .command.run ]; then 
                 output=`calculateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
@@ -167,7 +167,7 @@ else
                 output=`calculateMemTime.sh $program ${ref//\//-} $inputSize`
             fi 
 
-            #resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
+            #resAjust="$resAjust\n`cat $smartSbatchJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
             resAjust="$resAjust\n#Output from calculateMemTime.sh: $output \n"
             
             if [[ "$output" == "outOfRange" ]]; then
@@ -182,63 +182,63 @@ else
 
         fi
 
-        if [[ "$output" == "outOfRange" ]] && test `find $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat -mmin +2` || [ ! -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
+        if [[ "$output" == "outOfRange" ]] && test `find $smartSbatchJobRecordDir/stats/$program.${ref//\//-}.mem.stat -mmin +2` || [ ! -f $smartSbatchJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
             resAjust="$resAjust#Do not have a formula, or it is old and out of range. Let us build one...\n"
 
             #filter by program and reference
             # todo: maybe able to replace / in ref at begaining of the script?
             ref=${ref//\//-}
-            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.mem
+            grep COMPLETED $smartSbatchJobRecordDir/jobRecords.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $7 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSbatchJobRecordDir/stats/$program.$ref.mem
 
-            grep COMPLETED $smartSlurmJobRecordDir/jobRecord.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSlurmJobRecordDir/stats/$program.$ref.time
+            grep COMPLETED $smartSbatchJobRecordDir/jobRecords.txt 2>/dev/null | awk -F"," -v a=$program -v b=$ref '{ if($12 == a && $13 == b && $2!=0) {print $2, $8 }}' | sort -r  -k1,1 -k2,2 | sort -u -k1,1 > $smartSbatchJobRecordDir/stats/$program.$ref.time
 
-            echoerr "Got mem data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$program.$ref.mem):"
-            echoerr `cat $smartSlurmJobRecordDir/stats/$program.$ref.mem`
+            echoerr "Got mem data from jobRecords.txt (content of $smartSbatchJobRecordDir/stats/$program.$ref.mem):"
+            echoerr `cat $smartSbatchJobRecordDir/stats/$program.$ref.mem`
 
-            echoerr "Got time data from jobRecord.txt (content of $smartSlurmJobRecordDir/stats/$program.$ref.time):"
-            echoerr `cat $smartSlurmJobRecordDir/stats/$program.$ref.time`
+            echoerr "Got time data from jobRecords.txt (content of $smartSbatchJobRecordDir/stats/$program.$ref.time):"
+            echoerr `cat $smartSbatchJobRecordDir/stats/$program.$ref.time`
 
-            if [[ $(wc -l <$smartSlurmJobRecordDir/stats/$program.$ref.mem) -lt 3 ]]; then
+            if [[ $(wc -l <$smartSbatchJobRecordDir/stats/$program.$ref.mem) -lt 3 ]]; then
                 echoerr There are less than 3 records. No way to fit a curve. User defaut values...
                 resAjust="$resAjust#There are less than 3 records. No way to fit a curve.\n"
 
             else
-                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSbatchJobRecordDir/stats/$program.$ref.mem.png"'"; set title "Input Size vs. Memory Usage"; set xlabel "Input Size(K)"; set ylabel "Memory Usage(M)"; f(x)=a*x+b; fit f(x) "'"$smartSbatchJobRecordDir/stats/$program.$ref.mem"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSbatchJobRecordDir/stats/$program.$ref.mem"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSbatchJobRecordDir/stats/$program.$ref.mem"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSbatchJobRecordDir/stats/$program.$ref.mem.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSbatchJobRecordDir/stats/$program.$ref.mem.stat
 
-                echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.mem"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+                echo RSquare="$(gnuplot -e 'stats "'"$smartSbatchJobRecordDir/stats/$program.$ref.mem"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSbatchJobRecordDir/stats/$program.$ref.mem.stat
                 
-                echo SCount=$(wc -l $smartSlurmJobRecordDir/stats/$program.$ref.mem | cut -d' ' -f1) >> $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+                echo SCount=$(wc -l $smartSbatchJobRecordDir/stats/$program.$ref.mem | cut -d' ' -f1) >> $smartSbatchJobRecordDir/stats/$program.$ref.mem.stat
 
-                sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat
+                sed -i 's/\x0//g' $smartSbatchJobRecordDir/stats/$program.$ref.mem.stat
 
-                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSlurmJobRecordDir/stats/$program.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSlurmJobRecordDir/stats/$program.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+                gnuplot -e 'set key outside; set key reverse; set key invert; set term png; set output "'"$smartSbatchJobRecordDir/stats/$program.$ref.time.png"'"; set title "Input Size vs. Time Usage"; set xlabel "Input Size(K)"; set ylabel "Time Usage(Min)"; f(x)=a*x+b; fit f(x) "'"$smartSbatchJobRecordDir/stats/$program.$ref.time"'" u 1:2 via a, b; t(a,b)=sprintf("f(x) = %.2fx + %.2f", a, b); plot "'"$smartSbatchJobRecordDir/stats/$program.$ref.time"'" u 1:2,f(x) t t(a,b); print "Finala=", a; print "Finalb=",b; stats "'"$smartSbatchJobRecordDir/stats/$program.$ref.time"'" u 1 ' 2>&1 | grep 'Final\| M' | awk 'NF<5{print $1, $2}' |sed 's/:/=/' | sed 's/ //g' > $smartSbatchJobRecordDir/stats/$program.$ref.time.stat ; echo STDFIT=`cat fit.log | grep FIT_STDFIT | tail -n 1 | awk '{print $8}'` >> $smartSbatchJobRecordDir/stats/$program.$ref.time.stat
 
-                echo RSquare="$(gnuplot -e 'stats "'"$smartSlurmJobRecordDir/stats/$program.$ref.time"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+                echo RSquare="$(gnuplot -e 'stats "'"$smartSbatchJobRecordDir/stats/$program.$ref.time"'" using 1:2;' 2>&1| grep Correlation | cut -d' ' -f7 | awk '{print $1 * $1 }')" >> $smartSbatchJobRecordDir/stats/$program.$ref.time.stat
 
-                sed -i 's/\x0//g' $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+                sed -i 's/\x0//g' $smartSbatchJobRecordDir/stats/$program.$ref.time.stat
 
                 # Only after a rebuild, so submissions are not slowed down by an AI call each time.
                 aiReviewFit "input size vs memory, and input size vs run-time" \
-                    $smartSlurmJobRecordDir/stats/$program.$ref.mem \
-                    $smartSlurmJobRecordDir/stats/$program.$ref.mem.stat \
-                    $smartSlurmJobRecordDir/stats/$program.$ref.time \
-                    $smartSlurmJobRecordDir/stats/$program.$ref.time.stat
+                    $smartSbatchJobRecordDir/stats/$program.$ref.mem \
+                    $smartSbatchJobRecordDir/stats/$program.$ref.mem.stat \
+                    $smartSbatchJobRecordDir/stats/$program.$ref.time \
+                    $smartSbatchJobRecordDir/stats/$program.$ref.time.stat
 
                 echoerr
                 echoerr You can see the plot using commands:
-                echoerr display $smartSlurmJobRecordDir/stats/$program.$ref.mem.png
-                echoerr display $smartSlurmJobRecordDir/stats/$program.$ref.time.png
+                echoerr display $smartSbatchJobRecordDir/stats/$program.$ref.mem.png
+                echoerr display $smartSbatchJobRecordDir/stats/$program.$ref.time.png
 
-                #echoerr got files in $smartSlurmJobRecordDir/stats:
-                #ls -lrt $smartSlurmJobRecordDir/stats
-                if [ -f $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
+                #echoerr got files in $smartSbatchJobRecordDir/stats:
+                #ls -lrt $smartSbatchJobRecordDir/stats
+                if [ -f $smartSbatchJobRecordDir/stats/$program.${ref//\//-}.mem.stat ]; then
                     if [ -f .command.sh ] && [ -f .command.run ]; then 
                         output=`calculateMemTime.sh $program ${ref//\//-} $inputSize 2>> ../../../.nextflow.log`
                     else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
                         output=`calculateMemTime.sh $program ${ref//\//-} $inputSize 2>> .smartSlurm.log`
                     fi 
 
-                    #resAjust="$resAjust\n`cat $smartSlurmJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
+                    #resAjust="$resAjust\n`cat $smartSbatchJobRecordDir/stats/$program.${ref//\//-}.mem.stat`\n"
                     resAjust="$resAjust\n#Output from calculateMemTime.sh: $output \n"
                     if [[ "$output" == "outOfRange" ]]; then
                         resAjust="$resAjust#Input size is too big for the curve to estimate! Use default mem and runtime to submit job.\n"

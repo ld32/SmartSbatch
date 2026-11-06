@@ -12,7 +12,7 @@
 # Auto requeue job with double time when out of time
 # Auto requeue job with double memory when out of memory
 # Keep good log and send informative email
-# allow user level config file in ~/.smartSlurm/config/config.txt
+# allow user level config file in ~/.SmartSbatch/config/config.txt
 
 # Limitations:
 # does not take logs in logDir, does not take care of re-run because there is not unique flag for the job, does not take care of downstream jobs
@@ -40,12 +40,12 @@ if [ -f .command.sh ] && [ -f .command.run ]; then
     exec 2>>../../../.nextflow.log
     echoerr() { echo "$@" >> ../../../.nextflow.log; }
 
-# runAsPipeline
+# pipeline mode (parent is a slurmPipeLine script)
 elif [ -z "$runningSingleJob" ]; then
     echoerr() { echo "$@" >&2; }
     echoerr1() { echo "$@" >> .smartSlurm.log; }
 
-# single job without runAsPipeline
+# single job
 else 
     echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
     echoerr1() { echo "$@" >> .smartSlurm.log; }
@@ -75,9 +75,9 @@ usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F unique
 
 #todo: add HERE DOC function, example: /n/shared_db/misc/juicer/juicer.short.12hours.4core.sh
 
-if [ -z "$smartSlurmJobRecordDir" ]; then
-    if [ -f ~/.smartSlurm/config/config.txt ]; then
-        source ~/.smartSlurm/config/config.txt
+if [ -z "$smartSbatchJobRecordDir" ]; then
+    if [ -f ~/.SmartSbatch/config/config.txt ]; then
+        source ~/.SmartSbatch/config/config.txt
     else
         source $(dirname $0)/../config/config.txt || { echo Config list file not found: config.txt; exit 1; }
     fi
@@ -85,9 +85,9 @@ fi
 
 [[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
 
-mkdir -p $smartSlurmJobRecordDir/stats
+mkdir -p $smartSbatchJobRecordDir/stats
 
-[ -f  $smartSlurmJobRecordDir/jobRecord.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9jobStatus,10userID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18memRatio,19timeRatio,20date,21epoch > $smartSlurmJobRecordDir/jobRecord.txt
+[ -f  $smartSbatchJobRecordDir/jobRecords.txt ] || echo 1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9jobStatus,10userID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18memRatio,19timeRatio,20date,21epoch > $smartSbatchJobRecordDir/jobRecords.txt
 
 cmd="ssbatch"
 whitespace="[[:space:]]"
@@ -549,7 +549,7 @@ resAjust="#Depend on: $depsID\n"
 # original mem and time
 memO=$mem; minO=$min
 
-[ -f $smartSlurmJobRecordDir/stats/badNodes.$program.$ref ] && [ ! -z "$excludeFailedNodes" ] && exNodeList="-x `cat $smartSlurmJobRecordDir/stats/badNodes.$program.$ref`"
+[ -f $smartSbatchJobRecordDir/stats/badNodes.$program.$ref ] && [ ! -z "$excludeFailedNodes" ] && exNodeList="-x `cat $smartSbatchJobRecordDir/stats/badNodes.$program.$ref`"
 
 echoerr1
 echoerr1 Check if there input file list and this job does not depend on other jobs
@@ -604,7 +604,7 @@ fi
 export snakemakeSuccFlag=''
 export snakemakeFailFlag=''
 
-realSbatch=`which -a sbatch | grep -v SmartSlurm | head -n 1`
+realSbatch=`which -a sbatch | grep -v SmartSbatch | head -n 1`
 
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
@@ -677,7 +677,7 @@ else
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag " >> $job
             else 
 
-                # !!! runAsPipeline jobs will land here !!!
+                # !!! pipeline-mode jobs will land here !!!
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh || : ; }" >> $job
                 # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
             fi 
@@ -725,7 +725,7 @@ else
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag" >> $job  
             else 
 
-                # this is never called? Because runAsPipeline usa --wrap ? 
+                # this is never called? Because pipeline mode uses --wrap? 
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir && touch $succFlag" >> $job
             fi     
         fi

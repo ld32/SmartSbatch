@@ -1,4 +1,4 @@
-"""Optional AI support for the SmartSlurm Python tools.
+"""Optional AI support for the SmartSbatch Python tools.
 
 The Python twin of bin/aiHelper.sh. Every function here is safe to call when
 AI is unavailable: ai_enabled() returns False and ai_ask() returns None, so
@@ -21,8 +21,8 @@ MAX_PROMPT = 48000
 
 
 def _read_config():
-    """Read the SmartSlurm config the same way the shell scripts do."""
-    home_config = Path.home() / ".smartSlurm/config/config.txt"
+    """Read the SmartSbatch config the same way the shell scripts do."""
+    home_config = Path.home() / ".SmartSbatch/config/config.txt"
     local_config = Path(__file__).resolve().parent.parent / "config/config.txt"
 
     if home_config.is_file():
@@ -71,9 +71,9 @@ def ai_call_path():
         return explicit if os.access(explicit, os.X_OK) else None
 
     for candidate in (
-        Path.home() / ".smartSlurm/bin/ai_call",
+        Path.home() / ".SmartSbatch/bin/ai_call",
         Path(__file__).resolve().parent / "ai_call",
-        Path("/home/ld32/.smartSlurm/bin/ai_call"),
+        Path("/home/ld32/.SmartSbatch/bin/ai_call"),
     ):
         if os.access(candidate, os.X_OK):
             return str(candidate)
@@ -93,13 +93,13 @@ def ai_why_not():
         return "AI is disabled by config (smartSlurmAiEnabled=no)."
     if ai_call_path() is None:
         return (
-            "AI helper ai_call not found or not executable. Ask your SmartSlurm "
+            "AI helper ai_call not found or not executable. Ask your SmartSbatch "
             "admin to install it and add '%s' to the owner's "
-            "~/.smartSlurm/allowed_users.txt" % os.environ.get("USER", "your user")
+            "~/.SmartSbatch/allowed_users.txt" % os.environ.get("USER", "your user")
         )
     return (
-        "AI call failed. If you see 'Access denied', ask your SmartSlurm admin "
-        "to add '%s' to the owner's ~/.smartSlurm/allowed_users.txt"
+        "AI call failed. If you see 'Access denied', ask your SmartSbatch admin "
+        "to add '%s' to the owner's ~/.SmartSbatch/allowed_users.txt"
         % os.environ.get("USER", "your user")
     )
 

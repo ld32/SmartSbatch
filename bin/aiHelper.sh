@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# SmartSlurm AI helper library.
+# SmartSbatch AI helper library.
 #
 # Source this file to get optional AI support. Every function here is safe to
 # call when AI is unavailable: it returns non-zero and prints nothing to stdout,
@@ -13,9 +13,9 @@
 
 # Path to the setuid AI helper binary. Config or environment can override it.
 if [ -z "$smartSlurmAiCall" ]; then
-    for _aiTry in "$HOME/.smartSlurm/bin/ai_call" \
+    for _aiTry in "$HOME/.SmartSbatch/bin/ai_call" \
                   "$(dirname "$0")/ai_call" \
-                  "/home/ld32/.smartSlurm/bin/ai_call"; do
+                  "/home/ld32/.SmartSbatch/bin/ai_call"; do
         [ -x "$_aiTry" ] && { smartSlurmAiCall="$_aiTry"; break; }
     done
     unset _aiTry
@@ -39,9 +39,9 @@ aiWhyNot() {
     if [ "$smartSlurmAiEnabled" = "no" ]; then
         echo "AI is disabled by config (smartSlurmAiEnabled=no)."
     elif [ -z "$_AI_CALL" ] || [ ! -x "$_AI_CALL" ]; then
-        echo "AI helper ai_call not found or not executable. Ask your SmartSlurm admin to install it and add '$USER' to the owner's ~/.smartSlurm/allowed_users.txt"
+        echo "AI helper ai_call not found or not executable. Ask your SmartSbatch admin to install it and add '$USER' to the owner's ~/.SmartSbatch/allowed_users.txt"
     else
-        echo "AI call failed. If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to the owner's ~/.smartSlurm/allowed_users.txt"
+        echo "AI call failed. If you see 'Access denied', ask your SmartSbatch admin to add '$USER' to the owner's ~/.SmartSbatch/allowed_users.txt"
     fi
 }
 

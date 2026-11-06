@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Terminal-based SLURM job record reviewer — no X11, browser, or extra packages.
-# Usage: reviewJobRecords.py [jobRecord.txt]
+# Usage: reviewJobRecords.py [jobRecords.txt]
 
 import csv
 import time
@@ -34,10 +34,10 @@ def ai_unavailable_reason():
 
 if len(sys.argv) == 2:
     job_file = Path(sys.argv[1])
-    smartSlurmJobRecordDir = str(job_file.parent)
+    smartSbatchJobRecordDir = str(job_file.parent)
 else:
     script_dir = Path(__file__).resolve().parent
-    home_config = Path.home() / ".smartSlurm/config/config.txt"
+    home_config = Path.home() / ".SmartSbatch/config/config.txt"
     local_config = script_dir.parent / "config/config.txt"
 
     if home_config.is_file():
@@ -47,19 +47,19 @@ else:
     else:
         raise FileNotFoundError("Config file not found: config.txt")
 
-    smartSlurmJobRecordDir = None
+    smartSbatchJobRecordDir = None
     with open(config_path, "r") as config_file:
         for line in config_file:
-            if line.startswith("export smartSlurmJobRecordDir="):
-                smartSlurmJobRecordDir = line.strip().split("=", 1)[1].replace(
+            if line.startswith("export smartSbatchJobRecordDir="):
+                smartSbatchJobRecordDir = line.strip().split("=", 1)[1].replace(
                     "$HOME", str(Path.home())
                 )
                 break
 
-    if not smartSlurmJobRecordDir:
-        raise ValueError("smartSlurmJobRecordDir not found in config.")
+    if not smartSbatchJobRecordDir:
+        raise ValueError("smartSbatchJobRecordDir not found in config.")
 
-    job_file = Path(smartSlurmJobRecordDir) / "jobRecord.txt"
+    job_file = Path(smartSbatchJobRecordDir) / "jobRecords.txt"
 
 if not job_file.is_file():
     raise FileNotFoundError(f"Job record file not found: {job_file}")
@@ -100,7 +100,7 @@ def write_tmp(headers, rows):
 def save_to_file(headers, rows):
     try:
         mtime = time.strftime("%Y%m%d%H%M%S", time.localtime(job_file.stat().st_mtime))
-        backup = Path(smartSlurmJobRecordDir) / f"jobRecord_backup_{mtime}.txt"
+        backup = Path(smartSbatchJobRecordDir) / f"jobRecord_backup_{mtime}.txt"
         shutil.copy(job_file, backup)
         print(f"Backup : {backup}")
     except Exception as e:
@@ -110,7 +110,7 @@ def save_to_file(headers, rows):
 
 
 def delete_stats_files(program_name):
-    stats_dir = os.path.join(smartSlurmJobRecordDir, "stats")
+    stats_dir = os.path.join(smartSbatchJobRecordDir, "stats")
     for pat in [f"{program_name}.*", f"extraMem.{program_name}.*"]:
         for fp in glob.glob(os.path.join(stats_dir, pat)):
             try:
@@ -265,7 +265,7 @@ def ai_review_records(all_rows, program_name, deleted=None):
         )
 
     prompt = "\n".join([
-        "These are historical Slurm job records that SmartSlurm uses to predict how much "
+        "These are historical Slurm job records that SmartSbatch uses to predict how much "
         "memory and run-time to reserve for future jobs of this program. A record that is "
         "not representative makes every future prediction worse.",
         "",

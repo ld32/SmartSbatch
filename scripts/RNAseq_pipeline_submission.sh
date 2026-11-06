@@ -16,7 +16,7 @@ if [[ "$1" == "-h" ]] | [[ "$1" == "--help" ]] | [[ -z "$1" ]]; then
     exit
 fi
 
-export PATH=/n/data1/cores/ntc/scripts/AdelmanLab/RNAseqMappingSmartSlurm:$PATH
+export PATH=/n/data1/cores/ntc/scripts/AdelmanLab/RNAseqMappingSmartSbatch:$PATH
 
 settngsandpaths=`which settings_and_paths.sh`
 echo settings file $settngsandpaths

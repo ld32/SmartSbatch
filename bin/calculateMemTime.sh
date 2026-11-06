@@ -8,9 +8,9 @@ usage() { echoerr -e "Usage: \ncalculateMemTime.sh bowtie2 hg19 inputs\nReturn m
 
 echoerr Running: $0 $@
 
-# if [ -z "$smartSlurmJobRecordDir" ]; then 
-#     if [ -f ~/.smartSlurm/config/config.txt ]; then
-#         source ~/.smartSlurm/config/config.txt
+# if [ -z "$smartSbatchJobRecordDir" ]; then 
+#     if [ -f ~/.SmartSbatch/config/config.txt ]; then
+#         source ~/.SmartSbatch/config/config.txt
 #     else
 #         source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
 #     fi
@@ -23,10 +23,10 @@ inputSize=$3
 
 echoerr Calculating mem:
 memFormu=memFormu:
-if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat ]; then   
+if [ -s $smartSbatchJobRecordDir/stats/$software.$ref.mem.stat ]; then   
     
     unset Finala Finalb Maximum STDFIT SCount
-    .  $smartSlurmJobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+    .  $smartSbatchJobRecordDir/stats/$software.$ref.mem.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.mem.stat.final:
 
@@ -65,10 +65,10 @@ echoerr Got  $mem
 echoerr Calculating time: 
 timeFormu=timeFormu:
 
-if [ -s $smartSlurmJobRecordDir/stats/$software.$ref.time.stat ]; then
+if [ -s $smartSbatchJobRecordDir/stats/$software.$ref.time.stat ]; then
     
     unset Finala Finalb Maximum STDFIT SCount
-    .  $smartSlurmJobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
+    .  $smartSbatchJobRecordDir/stats/$software.$ref.time.stat # Finala=0.03 Finalb=5.0 Mean=250.0000 Minimum=200.0000 Maximum=300.0000 Median=250.0000 
 
     #echoerr content: $software.$ref.time.stat.final:
 
@@ -97,7 +97,7 @@ echoerr Got $time
 # Surface the AI review of the curve, if estimateResource.sh already produced one.
 # Deliberately no AI call here: this script runs on every submission and must stay fast.
 # stderr only, because stdout is parsed by the caller.
-aiReviewFile=$smartSlurmJobRecordDir/stats/$software.$ref.aiReview.txt
+aiReviewFile=$smartSbatchJobRecordDir/stats/$software.$ref.aiReview.txt
 if [ -s "$aiReviewFile" ]; then
     echoerr
     echoerr "AI review of the fitted curve for $software.$ref:"
