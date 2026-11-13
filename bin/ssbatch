@@ -69,7 +69,7 @@ done
 echoerr1 "$output"
 #echoerr() { echo "$@" >&2; }
 
-usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [run]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [run, optional: run will submit job, empty will do a dry run without submitting a job.]"; exit 1; }
+usage() { echo -e "Short Usage: \n${0##*/} [-P progam] [-R reference] [-F uniqueJobFlag (for smartPieline)s] [-I inputList] [-d Dependencies (for smartPipeline)] [sbatch options] [-dryrun]\nDetail Detail Usage:\n${0##*/} [-P progam, optional. Such as: bowtie2-4core. If empty, use script name as program name] [-R reference, optional. Such as: hg19] [-F uniqueJobFlag, optional. Such as 1.bowtie.s1.fa] [-I inputFileOrFolderList, optional. Such as: read1.fq,read2.fq] [ -d dependent jobs] <regular sbatch options, optional. Such as: job.sh or -p short -c 1 -t 2:0:0 --mem 2G --wrap \"my_application para1 para2\"> [-dryrun, optional: build the job script and show the estimate and sbatch command without submitting. Without it the job is submitted.]"; exit 1; }
 
 [[ "$1" == "-h" || "$1" == "--help" ]] && usage
 
@@ -169,6 +169,7 @@ for (( i=0; i<$(($#)); i++ )); do
   	    --dependency=* 	)   deps="${array[$i]}" && deps="${deps/--dependency=/}";;
         "test"          )   [ $i -eq $(($#)) ] && continue;;
         "run"           )   [ $i -eq $(($#)) ] && continue;;
+        -dryrun|--dryrun|"dryrun" )   dryrun=dryrun;;
         "--wrap"        )   wrapCMD="${array[$i+1]}" && array[$i+1]="";;
         --wrap=*        )   wrapCMD="${array[$i]}" && wrapCMD="${wrapCMD/--wrap=}";;
         *               )   { [ -z "$slurmScript" ] && [ -f "${array[$i]}" ] && [[ " -a -A -b -c -d -D -e  -i -J -L -M -m -n -N -o -p -q -P -t -F -w -x -B -G --nice --export " != *" ${arrayC[$i-1]} "* ]] && slurmScript="${array[$i]}" && continue; [ ! -z "$slurmScript" ] && slurmScriptParas="$slurmScriptParas ${array[$i]}" || additionalPara="$additionalPara ${array[$i]}"; };;
@@ -859,8 +860,20 @@ if [[ "$dryrun" != "dryrun" ]]; then
 
     #touch $submitFlag
 else
-    jobID=0$(date +"%4N")
-    echoerr1 "This is testing, so no job is submitted. In real run it should submit job such as: Submitted batch job $jobID"
+    # Dry run: report what would happen and stop before anything records a job
+    # (no allJobs.txt row, so checkRun never shows a job that does not exist).
+    echo -e "\n#myMem=$mem myTime=$time myPartition=$partition" >> $job
+    echoerr1 "Dry run: no job submitted."
+    {
+        echo "Dry run: no job submitted."
+        echo "  program: $program   reference: $ref   inputs: $inputs"
+        [ -z "$inputSize" ] || echo "  input size: $inputSize K"
+        echo "  memory: $mem M   time: $min min   partition: $partition   cores: $core"
+        echo "  job script: $job"
+        echo "  sbatch command: $cmd"
+        [ -s "$outFlag" ] && { echo "  estimate notes:"; grep '^#' "$outFlag" | sed 's/^/    /'; }
+    }
+    exit 0
 fi
 
 # not sure why we need this  but just in case, we will keep it here for now.

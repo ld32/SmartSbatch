@@ -13,6 +13,7 @@ The AI token never appears here: it stays inside the setuid ai_call helper.
 """
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -138,6 +139,11 @@ def ai_ask(prompt, timeout=None):
     except (subprocess.TimeoutExpired, OSError):
         return None
 
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
+    answer = result.stdout.strip()
+    # ai_call can exit 0 while printing an HTTP error body such as
+    # { "statusCode": 401, "message": "Unauthorized..." }. Treat that as a failure.
+    if re.match(r'\{\s*"statusCode"\s*:\s*[45]\d\d', answer):
+        return None
+    if result.returncode == 0 and answer:
+        return answer
     return None

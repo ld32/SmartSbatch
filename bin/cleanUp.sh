@@ -59,6 +59,10 @@ pipeline=${17:-unknown}          # v2: the pipeline this step belongs to (ssbatc
 . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
 jrNode=${SLURMD_NODENAME:-$(hostname 2>/dev/null)}
 jrSample=$(jrSampleFromFlag "$flag")
+# Standalone job (not a pipeline flag): use the first input file's name as the sample.
+if [ -z "$jrSample" ] && [ -n "$inputs" ] && [ "$inputs" != none ] && [[ "$inputs" != *jobSize:* ]]; then
+    jrSample=${inputs%%,*}; jrSample=${jrSample%% *}; jrSample=${jrSample%/}; jrSample=${jrSample##*/}
+fi
 
 # NOTE: no explicit migrate call here. Every mutation of the store goes through the
 # jobRecordSchema.sh API (jrAppendLine for appends, jrRewrite for the prunes), each

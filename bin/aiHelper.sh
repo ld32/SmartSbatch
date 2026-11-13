@@ -70,6 +70,14 @@ aiAsk() {
     fi
     _aiRc=$?
 
+    # ai_call can exit 0 while printing an HTTP error body such as
+    # { "statusCode": 401, "message": "Unauthorized..." }. Treat that as a failure.
+    if [ "$_aiRc" -eq 0 ] && head -c 200 "$_aiOut" | tr -d '\n' | grep -qE '^[[:space:]]*\{[[:space:]]*"statusCode"[[:space:]]*:[[:space:]]*[45][0-9][0-9]'; then
+        cat "$_aiOut" >> "$_aiErr"
+        : > "$_aiOut"
+        _aiRc=1
+    fi
+
     if [ "$_aiRc" -eq 0 ] && [ -s "$_aiOut" ]; then
         cat "$_aiOut"
     else

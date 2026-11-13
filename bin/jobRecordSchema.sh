@@ -347,7 +347,7 @@ jrEmitV2() {
     local f=$1
     [ -s "$f" ] || return 0
     awk -F, -v OFS=, -v hdr="$JR_HEADER_V2" '
-      function sampleOf(fl,  n,a,i){ n=split(fl,a,"."); if(n<2)return ""; i=2;
+      function sampleOf(fl,  n,a,i){ n=split(fl,a,"."); if(n<2 || a[1]!~/^[0-9]+$/)return ""; i=2;
           while(i<=n && a[i]~/^[0-9]+$/) i++; i++; return (i<=n)?a[i]:"" }
       function san(x){ gsub(/[, \t\r]/,"_",x); return x }
       BEGIN{ print hdr }
@@ -369,12 +369,15 @@ jrEmitV2() {
 # the deps are numeric. So: skip field 1 (step) and any numeric deps, the next
 # field is the step name, and the one after that is the sample. (jrRepair.sh does
 # the same in awk for stream conversion; keep the two in sync.)
+# A flag whose first field is not a numeric step is not a pipeline flag (e.g. a
+# standalone ssbatch job's "program.input.txt"); it has no sample, so return "".
 jrSampleFromFlag() {
     local flag=$1 i n s
     local IFS=.
     set -- $flag
     n=$#
     [ "$n" -ge 2 ] || { printf ''; return; }
+    case "$1" in (''|*[!0-9]*) printf ''; return;; esac
     i=2
     while [ "$i" -le "$n" ]; do
         eval "s=\${$i}"
