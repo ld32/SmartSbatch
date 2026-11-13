@@ -43,9 +43,77 @@ def out(program="-", ref="-", inputs="-", source="none", key="-"):
 
 
 def cache_key(text, core):
-    masked = PATH_RE.sub("<PATH>", text)
-    masked = re.sub(r"\s+", " ", masked).strip()
-    return hashlib.md5(("%s\ncore=%s" % (masked, core)).encode()).hexdigest()[:16]
+    """Key on the shape of the job, not on per-sample values.
+
+    Masks file paths, numbers, the value after an option (-n peaks) and
+    --opt=value values, so every sample of one step shares a cache entry.
+    """
+    masked, prev = [], ""
+    for line in text.splitlines():
+        for tok in tokens_of(line):
+            if re.match(r"^-{0,2}[\w.-]+=", tok):  # --opt=value and picard-style I=value
+                tok = tok.split("=", 1)[0] + "=<V>"
+            elif prev.startswith("-") and "=" not in prev and not tok.startswith("-") and tok != "|":
+                tok = "<V>"
+            elif PATH_RE.fullmatch(tok) or re.fullmatch(r"[\d.]+", tok):
+                tok = "<PATH>"
+            if not (tok == "<PATH>" and masked and masked[-1] == "<PATH>"):
+                masked.append(tok)  # a run of files counts once: 2 or 3 BAMs, same key
+            prev = tok if tok not in ("<V>",) else ""
+        masked.append("\n")
+        prev = ""
+    return hashlib.md5(("%s\ncore=%s" % (" ".join(masked), core)).encode()).hexdigest()[:16]
+
+
+INTERPRETERS = {"python", "python2", "python3", "rscript", "r", "perl", "bash", "sh",
+                "zsh", "java", "julia", "node", "ruby", "matlab"}
+SCRIPT_EXT = (".py", ".r", ".pl", ".sh", ".jar", ".jl", ".js", ".rb", ".m")
+SUBCOMMAND_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{1,29}")
+
+
+def derive_name(tool, tokens):
+    """Build the program name in code, so every sample gets the same name.
+
+    The AI only names the executable. Here: interpreters become the script's
+    name (Rscript analyze.R -> analyze); a plain word right after the tool is
+    its subcommand (bwa mem -> bwa-mem, macs2 callpeak -> macs2-callpeak).
+    Returns None if the tool does not appear in the job (AI guessed wrong).
+    """
+    want = os.path.basename(tool).lower()
+    idx = None
+    for i, tok in enumerate(tokens):
+        base = os.path.basename(tok).lower()
+        if base == want:
+            idx = i
+            break
+    if idx is None:  # e.g. AI said "R" for "Rscript", or "python" for "python3"
+        for i, tok in enumerate(tokens):
+            base = os.path.basename(tok).lower()
+            if len(want) > 0 and len(base) > 0 and (base.startswith(want) or want.startswith(base)) \
+                    and (base in INTERPRETERS or want in INTERPRETERS):
+                idx = i
+                break
+    if idx is None:
+        return None
+
+    exe = os.path.basename(tokens[idx])
+    rest = tokens[idx + 1:]
+    if exe.lower() in INTERPRETERS:
+        for j, tok in enumerate(rest):
+            if tok in ("|", ";", "&&", ">"):
+                break
+            if tok.lower().endswith(SCRIPT_EXT):
+                name = os.path.splitext(os.path.basename(tok))[0]
+                after = rest[j + 1] if j + 1 < len(rest) else ""
+                # java -jar picard.jar MarkDuplicates -> picard-MarkDuplicates
+                if tok.lower().endswith(".jar") and SUBCOMMAND_RE.fullmatch(after) \
+                        and not os.path.exists(after):
+                    name = "%s-%s" % (name, after)
+                return name
+        return exe
+    if rest and SUBCOMMAND_RE.fullmatch(rest[0]) and not os.path.exists(rest[0]):
+        return "%s-%s" % (exe, rest[0])
+    return exe
 
 
 def tokens_of(text):
@@ -87,10 +155,15 @@ def local_inputs(tokens, rule, skip):
     exts = tuple(e.lower() for e in (rule.get("input_extensions") or []) if e)
     found = []
     for i, tok in enumerate(tokens):
+        opt = ""
+        m = re.match(r"^(-{0,2}[\w.-]+)=(.*)$", tok)
+        if m:  # --fastqs=dir or I=file: the value, flagged by its option name
+            opt, tok = m.group(1), m.group(2)
         for part in tok.split(","):
             if not part or part in skip or part in found or not os.path.exists(part):
                 continue
-            by_flag = i > 0 and tokens[i - 1] in flags
+            by_flag = (opt and (opt in flags or opt + "=" in flags)) or \
+                (not opt and i > 0 and tokens[i - 1] in flags)
             by_ext = exts and part.lower().endswith(exts)
             if by_flag or by_ext:
                 found.append(part)
@@ -101,9 +174,9 @@ def ask_ai(text, core):
     prompt = (
         "You read a Slurm job and identify what drives its memory and run-time. "
         "Reply with ONLY one JSON object, no prose, with keys:\n"
-        '  "program": the main bioinformatics/compute tool actually doing the work '
-        '(e.g. "bowtie2", "STAR", "samtools-sort"), not the shell or script name; '
-        "letters, digits, . _ - only.\n"
+        '  "program": the executable of the main tool doing the work, exactly as '
+        'written in the job (e.g. "bowtie2", "STAR", "samtools", "Rscript"), without '
+        "any subcommand; not a shell builtin like echo or cd.\n"
         '  "reference": short genome/reference label if one is used (e.g. "hg38", '
         '"mm10"), else "none".\n'
         '  "inputs": list of the data input files/folders whose size drives the '
@@ -173,11 +246,13 @@ def main():
         if not isinstance(rule, dict):
             out(key=key)
 
-    program = clean_name(rule.get("program"))
     ref = clean_name(rule.get("reference")) or "none"
 
-    # Reject a program name that is not in the job at all (hallucination).
-    if not program or program.split("-")[0].lower() not in text.lower():
+    # Name built in code from this job's own command; rejects a tool that is
+    # not in the job at all (hallucination).
+    name = derive_name(str(rule.get("program") or ""), tokens)
+    program = clean_name(name)
+    if not program:
         out(key=key)
     program = "%s-%score" % (program, core)
 
