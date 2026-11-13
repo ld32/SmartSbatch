@@ -32,12 +32,12 @@ Required (11): pipeline, step, ref, jobID, inputSize, memUsed, timeUsed, memAllo
 
 ### Logistics
 - Branch: **`feat/jobrecords-v2`** off **ntc-agnt's fork of ld32 `master`** (one coordinated PR → ld32).
-- Harness: push to the **standalone slurmless repo** only. Merge into SmartSlurm's vendored copy is **on hold** (no `git subtree` sync until dev settles).
+- Harness: push to the **standalone slurmless repo** only. Merge into SmartSbatch's vendored copy is **on hold** (no `git subtree` sync until dev settles).
 - Rollback: `jrRepair.sh` keeps timestamped backups of the pre-conversion file(s) (`jobRecord.back.<ts>.txt`, and the `.oom.oot.over` variant) so a user can restore v1 if needed. Never delete the backup.
 
 ## 0. Objective & constraints
 
-Revise the SmartSlurm jobRecord schema so it is honest, minimal, name-addressed, and
+Revise the SmartSbatch jobRecord schema so it is honest, minimal, name-addressed, and
 ready for per-(pipeline, step, ref) fitting — **without breaking existing deployments**.
 
 Hard constraints:

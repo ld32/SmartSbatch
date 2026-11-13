@@ -91,8 +91,8 @@ command -v aiEnabled >/dev/null 2>&1 || aiEnabled() { return 1; }
 
 # Records needed before a fit is worth reviewing, and a short timeout because
 # this runs while a job is being submitted.
-[ -z "$smartSlurmAiMinRecords" ] && smartSlurmAiMinRecords=10
-[ -z "$smartSlurmAiReviewTimeout" ] && smartSlurmAiReviewTimeout=30
+[ -z "$smartSbatchAiMinRecords" ] && smartSbatchAiMinRecords=10
+[ -z "$smartSbatchAiReviewTimeout" ] && smartSbatchAiReviewTimeout=30
 
 aiReviewFile=$smartSbatchJobRecordDir/stats/$program.$ref.aiReview.txt
 
@@ -107,12 +107,12 @@ aiReviewFit() {
 
     [ -s "$aiData1" ] || return 1
     aiRecords=`wc -l < "$aiData1"`
-    [ "$aiRecords" -ge "$smartSlurmAiMinRecords" ] || {
-        echoerr "Skipping AI review of the fit: only $aiRecords records, need $smartSlurmAiMinRecords."
+    [ "$aiRecords" -ge "$smartSbatchAiMinRecords" ] || {
+        echoerr "Skipping AI review of the fit: only $aiRecords records, need $smartSbatchAiMinRecords."
         return 1
     }
 
-    aiReview=`smartSlurmAiTimeout=$smartSlurmAiReviewTimeout; {
+    aiReview=`smartSbatchAiTimeout=$smartSbatchAiReviewTimeout; {
         echo "SmartSbatch just fitted a straight line to historical Slurm job records to predict memory and run-time. Review the fit in at most 10 lines: say whether the linear fit is trustworthy, and flag any outliers, non-linearity or regime change (for example a software or reference change) that would make predictions wrong. Name the specific data points that look wrong. Do not repeat the numbers back without a conclusion."
         echo ""
         echo "Program: $program   Reference: $ref   Data: $aiLabel"
@@ -298,7 +298,7 @@ else
                     if [ -f .command.sh ] && [ -f .command.run ]; then 
                         output=`calculateMemTime.sh $program ${ref//\//-} $inputSize $pipeline 2>> ../../../.nextflow.log`
                     else #if [[ "$parentCmd" == */bin/snakemake* ]]; then
-                        output=`calculateMemTime.sh $program ${ref//\//-} $inputSize $pipeline 2>> .smartSlurm.log`
+                        output=`calculateMemTime.sh $program ${ref//\//-} $inputSize $pipeline 2>> .smartSbatch.log`
                     fi 
 
                     #resAjust="$resAjust\n`cat $smartSbatchJobRecordDir/stats/$statKey.mem.stat`\n"
@@ -354,16 +354,16 @@ if [ -f "$jr" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
 fi
 
 if [[ $adjust == "adjust" ]]; then
-    echo $inputSize $mem $min $extraMem >> $smartSlurmLogDir/$flag.adjust
+    echo $inputSize $mem $min $extraMem >> $smartSbatchLogDir/$flag.adjust
 fi  
 
-echo -e "$resAjust" >> $smartSlurmLogDir/$flag.out       
+echo -e "$resAjust" >> $smartSbatchLogDir/$flag.out       
 
 # Append the AI review verbatim, so backslashes in the text survive.
 if [ -n "$aiReviewText" ]; then
     { echo "#AI review of the fitted curve for $program.$ref ($aiReviewRecords records):"
       echo "$aiReviewText" | sed 's/^/#/'
-      echo "#Full review: $aiReviewFile"; } >> $smartSlurmLogDir/$flag.out
+      echo "#Full review: $aiReviewFile"; } >> $smartSbatchLogDir/$flag.out
 fi
 
 echo $inputSize $mem $min $extraMem

@@ -1,5 +1,5 @@
 #!/bin/sh
-# SmartSlurm test pipeline (legacy blank-line blocks / --wrap).
+# SmartSbatch test pipeline (legacy blank-line blocks / --wrap).
 # Bodies avoid quoted-whitespace args, which the --wrap flattener collapses.
 # (For richer text ops -- awk, tr ' ', quoted patterns -- use the #@end version.)
 manifest=$1

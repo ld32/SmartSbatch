@@ -66,7 +66,7 @@ def _setting(name, default=None):
 
 def ai_call_path():
     """Path to the setuid ai_call helper, or None if it cannot be found."""
-    explicit = _setting("smartSlurmAiCall")
+    explicit = _setting("smartSbatchAiCall")
     if explicit:
         return explicit if os.access(explicit, os.X_OK) else None
 
@@ -74,6 +74,7 @@ def ai_call_path():
         Path.home() / ".SmartSbatch/bin/ai_call",
         Path(__file__).resolve().parent / "ai_call",
         Path("/home/ld32/.SmartSbatch/bin/ai_call"),
+        Path("/home/ld32/.smartSlurm/bin/ai_call"),
     ):
         if os.access(candidate, os.X_OK):
             return str(candidate)
@@ -82,24 +83,24 @@ def ai_call_path():
 
 def ai_enabled():
     """True only when AI is turned on and the helper is really runnable."""
-    if _setting("smartSlurmAiEnabled", "yes") == "no":
+    if _setting("smartSbatchAiEnabled", "yes") == "no":
         return False
     return ai_call_path() is not None
 
 
 def ai_why_not():
     """One line explaining why AI is unavailable, for the user."""
-    if _setting("smartSlurmAiEnabled", "yes") == "no":
-        return "AI is disabled by config (smartSlurmAiEnabled=no)."
+    if _setting("smartSbatchAiEnabled", "yes") == "no":
+        return "AI is disabled by config (smartSbatchAiEnabled=no)."
     if ai_call_path() is None:
         return (
             "AI helper ai_call not found or not executable. Ask your SmartSbatch "
             "admin to install it and add '%s' to the owner's "
-            "~/.SmartSbatch/allowed_users.txt" % os.environ.get("USER", "your user")
+            "~/.smartSlurm/allowed_users.txt" % os.environ.get("USER", "your user")
         )
     return (
         "AI call failed. If you see 'Access denied', ask your SmartSbatch admin "
-        "to add '%s' to the owner's ~/.SmartSbatch/allowed_users.txt"
+        "to add '%s' to the owner's ~/.smartSlurm/allowed_users.txt"
         % os.environ.get("USER", "your user")
     )
 
@@ -108,7 +109,7 @@ def _timeout(explicit=None):
     if explicit is not None:
         return explicit
     try:
-        return int(_setting("smartSlurmAiTimeout", "90"))
+        return int(_setting("smartSbatchAiTimeout", "90"))
     except ValueError:
         return 90
 

@@ -26,7 +26,7 @@
 # ===========================================================================
 set -uo pipefail
 
-LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"
+LOGDIR="${smartSbatchLogDir:-smartSbatchLog}"
 FORCE_LINEAR=""; ADDR=""; USE_COLOR="auto"; WHY=""; RESOLVE=""; RENDER=""; NO_HINT=""; SAMPLES_MODE=""; EFF_MODE=""
 EFF_VIEW="overview"; EFF_SELECT=""; EFF_SHOW="time,mem"
 EFF_LOW="${effLowPct:-25}"   # rows at/below this efficiency % get a red bar (waste alert)

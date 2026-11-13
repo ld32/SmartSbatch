@@ -1,5 +1,5 @@
 #!/bin/sh
-# SmartSlurm test pipeline (explicit #@end blocks / scripts-on-disk).
+# SmartSbatch test pipeline (explicit #@end blocks / scripts-on-disk).
 # Usage:
 #   runAsPipeline --script "phrase_pipeline_end.sh phrase_manifest.txt" \
 #                 --sbatch-options "sbatch -p short -c 1 --mem 100M -t 5:00" --tmp noTmp

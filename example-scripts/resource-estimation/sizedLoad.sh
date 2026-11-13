@@ -3,7 +3,7 @@
 # sizedLoad.sh <input_file>
 # A test "tool" that consumes MEMORY and WALL-TIME in proportion to the number
 # of rows in its input, deterministically and with tunable knobs. Use it to
-# exercise SmartSlurm's jobRecord fitting + resource auto-increment: run it over
+# exercise SmartSbatch's jobRecord fitting + resource auto-increment: run it over
 # several differently-sized inputs so rAP can fit a curve, and set FAIL_PROB>0
 # to make it overshoot the request and trigger OOM/OOT auto-rerun.
 #

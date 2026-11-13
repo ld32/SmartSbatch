@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 # to install
-# mamba create -n smartSlurmEnv dash plotly pandas graphviz 
+# mamba create -n smartSbatchEnv dash plotly pandas graphviz 
 
 # to run: 
-# conda activate smartSlurmEnv
+# conda activate smartSbatchEnv
 # workflowPlot.py && dot -Tsvg jobs.dot -o dag.svg && display dag.svg 
 
 from collections import defaultdict

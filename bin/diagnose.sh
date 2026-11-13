@@ -20,7 +20,7 @@
 # ===========================================================================
 set -uo pipefail
 
-LOGDIR="${smartSlurmLogDir:-smartSlurmLog}"; JSON=""; FLAG=""
+LOGDIR="${smartSbatchLogDir:-smartSbatchLog}"; JSON=""; FLAG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --log) LOGDIR="$2"; shift 2;;
@@ -56,9 +56,9 @@ TABLE
 # follows it. Falls back to the whole file for pre-M1 (legacy) logs.
 REGION_SRC="tool-region"; rstart=0; rend=0
 if [ -f "$OUT" ]; then
-  rstart=$(grep -nE 'SmartSlurm step output:' "$OUT" | tail -1 | cut -d: -f1)
+  rstart=$(grep -nE 'SmartSbatch step output:' "$OUT" | tail -1 | cut -d: -f1)
   if [ -n "$rstart" ]; then
-    rend=$(awk -v s="$rstart" 'NR>s && /SmartSlurm job report:/{print NR; exit}' "$OUT")
+    rend=$(awk -v s="$rstart" 'NR>s && /SmartSbatch job report:/{print NR; exit}' "$OUT")
     [ -z "$rend" ] && rend=$(( $(wc -l < "$OUT") + 1 ))
   else
     REGION_SRC="whole-log(legacy)"; rstart=0

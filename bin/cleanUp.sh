@@ -3,12 +3,12 @@
 #set -x
 
 # M1: sentinel marking the end of the step's own (tool) output and the start of
-# the SmartSlurm job report / teardown. Emitted first so everything below --
-# including the background "Cleanup counter" ticks -- is clearly SmartSlurm's,
+# the SmartSbatch job report / teardown. Emitted first so everything below --
+# including the background "Cleanup counter" ticks -- is clearly SmartSbatch's,
 # leaving the tool output above cleanly bracketed. Fires on success and failure
 # because this script runs from the job's EXIT trap.
 echo
-echo "========== SmartSlurm job report: $1 =========="
+echo "========== SmartSbatch job report: $1 =========="
 echo
 
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
@@ -119,9 +119,9 @@ jrFailPrune() {
 
 # if not successful, delete cromwell error file, so that the job not labeled fail
 #ls -l execution
-[ -f $smartSlurmLogDir/$flag.success ] || rm -r execution/rc 2>/dev/null
+[ -f $smartSbatchLogDir/$flag.success ] || rm -r execution/rc 2>/dev/null
 
-out=$smartSlurmLogDir/"$flag.out"; err=$smartSlurmLogDir/$flag.err; script=$smartSlurmLogDir/$flag.sh; succFile=$smartSlurmLogDir/$flag.success; failFile=$smartSlurmLogDir/$flag.failed; checkpointDir=$smartSlurmLogDir/$flag
+out=$smartSbatchLogDir/"$flag.out"; err=$smartSbatchLogDir/$flag.err; script=$smartSbatchLogDir/$flag.sh; succFile=$smartSbatchLogDir/$flag.success; failFile=$smartSbatchLogDir/$flag.failed; checkpointDir=$smartSbatchLogDir/$flag
 
 [ -f .exitcode ] && touch $succFile
 
@@ -154,7 +154,7 @@ jobStat=`echo -e "$sacct" | tail -n 1`
 
 #from: "sacct --format=JobID,Submit,Start,End,MaxRSS,State,NodeList%30,Partition,ReqTRES%30,TotalCPU,Elapsed%14,Timelimit%14 --units=M -j $SLURM_JOBID"
 
-START=`head -n 1 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f6`
+START=`head -n 1 $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d' ' -f6`
 
 FINISH=`date +%s`
 
@@ -208,7 +208,7 @@ echo start: $START finish: $FINISH mem: $memSacct min: $min
 # sacct actually give very not accurate result. Let's use cgroup report
 #mem=`cat /sys/fs/cgroup/memory/slurm/uid_*/job_$SLURM_JOBID/memory.max_usage_in_bytes`
 
-srunM=`cut -d' ' -f2 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
+srunM=`cut -d' ' -f2 $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
 #srunM=$((srunM / 1024 / 1024 ))
 
 [ -z "$srunM" ] && srunM=0
@@ -241,7 +241,7 @@ if [ -f ${out%.out}.adjust ]; then
    #totalM=`echo $tText | cut -d' ' -f1`
    #totalT=`echo $tText | cut -d' ' -f2`
    #extraMC=`echo $tText | cut -d' ' -f3`
-   IFS=' ' read -r inputSize totalM totalT extraMemC  <<< `cat $smartSlurmLogDir/$flag.adjust`
+   IFS=' ' read -r inputSize totalM totalT extraMemC  <<< `cat $smartSbatchLogDir/$flag.adjust`
 fi 
 
 #[ -f $smartSbatchJobRecordDir/stats/extraMem.$software.$ref ] && extraMem=`sort -nr $smartSbatchJobRecordDir/stats/extraMem.$software.$ref | head -n1`
@@ -288,7 +288,7 @@ echo dataToPlot,$record
 # runAsPipeline groups the A+ per-sample rows. checkRunGrid reads by column
 # position and skips this header row, so the header names are free to carry
 # units and the trailing date column leaves every used index unchanged.
-effFile="$smartSlurmLogDir/efficiency.tsv"
+effFile="$smartSbatchLogDir/efficiency.tsv"
 [ -f "$effFile" ] || printf 'epoch\tflag\tsample\tprogram\tref\tstatus\tallocMemMB\tusedMemMB\tallocTimeMin\tusedTimeMin\tinputs\tdate\n' > "$effFile"
 effSample="${inputs#,}"; effSample="${effSample%%,*}"; effSample="${effSample%% *}"; effSample=`basename "$effSample" 2>/dev/null`
 { [ -z "$effSample" ] || [ "$effSample" = none ]; } && effSample="$2"
@@ -468,7 +468,7 @@ if [ ! -f $succFile ]; then
                     
                     # Update dependent jobs
                     IFS=$'\n'
-                    for line in `grep $SLURM_JOBID $smartSlurmLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
+                    for line in `grep $SLURM_JOBID $smartSbatchLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
                         job=${line%% *}
                         deps=`echo $line | awk '{print $2}'`
 
@@ -487,7 +487,7 @@ if [ ! -f $succFile ]; then
                         if [ ! -z "$deps" ]; then
                             scontrol update jobid=$job $deps
                             flg=`echo $line | awk '{print $3}'`
-                            echo `grep "Command used to submit the job:" $smartSlurmLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSlurmLogDir/$flg.sh
+                            echo `grep "Command used to submit the job:" $smartSbatchLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSbatchLogDir/$flg.sh
                         fi
                     done
 
@@ -507,17 +507,17 @@ if [ ! -f $succFile ]; then
 
                     # (no longer touch $out.$newJobID: 0-byte job-id marker, only
                     #  read cosmetically by checkRun; requeue is recorded below.)
-                    cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
+                    cp $smartSbatchLogDir/allJobs.txt $smartSbatchLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
 
                     # Lock mechanism for job ID adjustments
                     while true; do
-                        if mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null; then
+                        if mkdir $smartSbatchLogDir/job.adjusting.lock  2>/dev/null; then
                             break
                         else 
-                            folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
+                            folder_mtime=$(stat -c %Y $smartSbatchLogDir/job.adjusting.lock )
                             current_time=$(date +%s)
                             if [[ $((current_time - folder_mtime)) -gt 10 ]]; then
-                                touch $smartSlurmLogDir/job.adjusting.lock 
+                                touch $smartSbatchLogDir/job.adjusting.lock 
                                 break
                             fi    
                         fi
@@ -525,11 +525,11 @@ if [ ! -f $succFile ]; then
                         sleep 1
                     done  
 
-                    sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
-                    rm -r $smartSlurmLogDir/job.adjusting.lock
+                    sed -i "s/$SLURM_JOBID/$newJobID/" $smartSbatchLogDir/allJobs.txt
+                    rm -r $smartSbatchLogDir/job.adjusting.lock
 
-                    cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$newJobID.memCPU.txt
-                    echo 0 0 0 0 0 0 0 >> $smartSlurmLogDir/job_$newJobID.memCPU.txt
+                    cp $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt $smartSbatchLogDir/job_$newJobID.memCPU.txt
+                    echo 0 0 0 0 0 0 0 >> $smartSbatchLogDir/job_$newJobID.memCPU.txt
                     break
 
                 else
@@ -577,7 +577,7 @@ if [ ! -f $succFile ]; then
                     if [[ "$newJobID" =~ ^[0-9]+$ ]]; then
                         echo "# mem=$myMem time=$myTime " >> $script
                         IFS=$'\n'
-                        for line in `grep $SLURM_JOBID $smartSlurmLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
+                        for line in `grep $SLURM_JOBID $smartSbatchLogDir/allJobs.txt | grep -v ^$SLURM_JOBID`; do
                             job=${line%% *}
                             deps=`echo $line | awk '{print $2}'`
 
@@ -595,12 +595,12 @@ if [ ! -f $succFile ]; then
                             if [ ! -z "$deps" ]; then
                                 scontrol update jobid=$job $deps
                                 flg=`echo $line | awk '{print $3}'`
-                                echo `grep "Command used to submit the job:" $smartSlurmLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSlurmLogDir/$flg.sh
+                                echo `grep "Command used to submit the job:" $smartSbatchLogDir/$flg.sh | tail -n 1 | sed "s/$SLURM_JOBID/$newJobID/" ` >> $smartSbatchLogDir/$flg.sh
                             fi
                         done
 
-                        #if `sh $PWD/$smartSlurmLogDir/$flag.requeueCMD; rm $PWD/$smartSlurmLogDir/$flag.requeueCMD;`; then
-                        #rm $smartSlurmLogDir/$flag.requeueCMD #;  then
+                        #if `sh $PWD/$smartSbatchLogDir/$flag.requeueCMD; rm $PWD/$smartSbatchLogDir/$flag.requeueCMD;`; then
+                        #rm $smartSbatchLogDir/$flag.requeueCMD #;  then
                         #if `srun --jobid $SLURM_JOBID $acc "pwd"`; then
                         #if `scontrol requeue $SLURM_JOBID; sleep 2; scontrol update JobId=$SLURM_JOBID MinMemoryNode=$mem`; then
 
@@ -611,16 +611,16 @@ if [ ! -f $succFile ]; then
 
                         # (no longer touch $out.$newJobID: see note at the other
                         #  requeue site -- 0-byte cosmetic job-id marker.)
-                        cp $smartSlurmLogDir/allJobs.txt $smartSlurmLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
+                        cp $smartSbatchLogDir/allJobs.txt $smartSbatchLogDir/allJobs.requeue.$SLURM_JOBID.as.$newJobID
                         while true; do
-                            if mkdir $smartSlurmLogDir/job.adjusting.lock  2>/dev/null; then
+                            if mkdir $smartSbatchLogDir/job.adjusting.lock  2>/dev/null; then
                                 break
                             else 
-                                folder_mtime=$(stat -c %Y $smartSlurmLogDir/job.adjusting.lock )
+                                folder_mtime=$(stat -c %Y $smartSbatchLogDir/job.adjusting.lock )
                                 current_time=$(date +%s)
 
                                 if [[ $((current_time - folder_mtime)) -gt 10 ]]; then
-                                    touch $smartSlurmLogDir/job.adjusting.lock 
+                                    touch $smartSbatchLogDir/job.adjusting.lock 
                                     break
                                 fi    
                             fi
@@ -628,10 +628,10 @@ if [ ! -f $succFile ]; then
                             sleep 1
                         done                     
 
-                        sed -i "s/$SLURM_JOBID/$newJobID/" $smartSlurmLogDir/allJobs.txt
-                        rm -r $smartSlurmLogDir/job.adjusting.lock
-                        cp $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt $smartSlurmLogDir/job_$newJobID.memCPU.txt
-                        echo 0 0 0 0 0 0 0 >> $smartSlurmLogDir/job_$newJobID.memCPU.txt
+                        sed -i "s/$SLURM_JOBID/$newJobID/" $smartSbatchLogDir/allJobs.txt
+                        rm -r $smartSbatchLogDir/job.adjusting.lock
+                        cp $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt $smartSbatchLogDir/job_$newJobID.memCPU.txt
+                        echo 0 0 0 0 0 0 0 >> $smartSbatchLogDir/job_$newJobID.memCPU.txt
                         break
                     
                     else 
@@ -681,12 +681,12 @@ fi
 # it; the per-job savings below (from memCPU.txt) is unchanged.
 
 rate=0.0013 # $0.0013 per G per hour
-maxSaved=`cut -d' ' -f4 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
-jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
+maxSaved=`cut -d' ' -f4 $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
+jMin=`wc -l $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
 savedDollar=$(echo "$rate * $maxSaved / 1024 * $jMin / 60" | bc -l)
 
-maxUsed=`cut -d' ' -f2 $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
-#jMin=`wc -l $smartSlurmLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
+maxUsed=`cut -d' ' -f2 $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
+#jMin=`wc -l $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt | cut -d ' ' -f 1`
 savedDollar1=$(echo "$rate * ($defaultMem - $maxUsed) / 1024 * $jMin / 60" | bc -l)
 
 
@@ -694,7 +694,7 @@ savedDollar1=$(echo "$rate * ($defaultMem - $maxUsed) / 1024 * $jMin / 60" | bc 
 # Ask AI to explain the failure, so the email says what went wrong and how to fix it.
 # Purely additive: when AI is unavailable the email is exactly what it always was.
 aiSummary=""
-aiSummaryFile=$smartSlurmLogDir/ai.$SLURM_JOBID.txt
+aiSummaryFile=$smartSbatchLogDir/ai.$SLURM_JOBID.txt
 # Canceled jobs are the user's own decision, so there is nothing for AI to explain.
 if [[ "$jobStatus" != "COMPLETED" ]] && [[ "$jobStatus" != "Canceled" ]] && aiEnabled; then
     echo Asking AI to analyze failed job $SLURM_JOBID, status: $jobStatus ...
@@ -765,12 +765,12 @@ if [ -f "$err" ]; then
     fi
 fi
 
-#cp /tmp/job_$SLURM_JOBID.mem.txt $smartSlurmLogDir/
+#cp /tmp/job_$SLURM_JOBID.mem.txt $smartSbatchLogDir/
 
 # move to inside of job
-#summarizeRun.sh $smartSlurmLogDir $flag 
+#summarizeRun.sh $smartSbatchLogDir $flag 
 
-[ -f $smartSlurmLogDir/summary.$SLURM_JOBID ] && toSend="`cat $smartSlurmLogDir/summary.$SLURM_JOBID`\n$toSend" && s="${toSend%% *} $s"
+[ -f $smartSbatchLogDir/summary.$SLURM_JOBID ] && toSend="`cat $smartSbatchLogDir/summary.$SLURM_JOBID`\n$toSend" && s="${toSend%% *} $s"
 
 # Put the AI explanation at the top of the email, where the user reads first.
 [ -z "$aiSummary" ] || toSend="AI analysis of this $jobStatus job:\n$aiSummary\n\n----------------------------------------\n$toSend"
@@ -800,15 +800,15 @@ _ss_sendmail() {   # <subject> <body>
     echo -e "$2" | mail -s "$1" "$USER" 2>/dev/null && echo "email sent: $1" || echo "email not sent: $1"
 }
 
-alljobs="$smartSlurmLogDir/allJobs.txt"
+alljobs="$smartSbatchLogDir/allJobs.txt"
 
 if [ ! -f "$succFile" ]; then
     # ---- sample BREAK: one warning per sample (first failure wins) ----
-    brkMark="$smartSlurmLogDir/.emailed.break.$effSample"
+    brkMark="$smartSbatchLogDir/.emailed.break.$effSample"
     if [ ! -f "$brkMark" ]; then
         : > "$brkMark"
-        _ss_sendmail "SmartSlurm FAIL: sample $effSample ($jobStatus)" \
-            "Sample '$effSample' FAILED at step $flag ($jobStatus).\nRe-run the same command to continue -- SmartSlurm will resize and resubmit.\n\n$toSend"
+        _ss_sendmail "SmartSbatch FAIL: sample $effSample ($jobStatus)" \
+            "Sample '$effSample' FAILED at step $flag ($jobStatus).\nRe-run the same command to continue -- SmartSbatch will resize and resubmit.\n\n$toSend"
     else
         echo "break already emailed for sample $effSample"
     fi
@@ -823,10 +823,10 @@ else
             function samp(inp,   x,p,n){ sub(/^,/,"",inp); sub(/ .*/,"",inp); split(inp,x,","); n=split(x[1],p,"/"); return p[n] }
             NR>1 && NF>=6 { st=$3; sub(/\..*/,"",st); smp=samp($6); if(smp==""||smp=="none") smp=$4; if(smp==s && st+0>m) m=st+0 }
             END { print m+0 }' "$alljobs"`
-        cmpMark="$smartSlurmLogDir/.emailed.done.$effSample"
+        cmpMark="$smartSbatchLogDir/.emailed.done.$effSample"
         if [ "${myStep:-0}" -ge "${maxStep:-0}" ] && [ ! -f "$cmpMark" ]; then
             : > "$cmpMark"
-            _ss_sendmail "SmartSlurm done: sample $effSample completed" \
+            _ss_sendmail "SmartSbatch done: sample $effSample completed" \
                 "Sample '$effSample' completed successfully (through step $myStep).\n\nSee 'checkRun' (press e) for resource efficiency."
         fi
     fi
@@ -839,7 +839,7 @@ else
         succN=0
         while read -r fl; do
             [ -z "$fl" ] && continue
-            [ -e "$smartSlurmLogDir/$fl.success" ] && succN=$((succN+1))
+            [ -e "$smartSbatchLogDir/$fl.success" ] && succN=$((succN+1))
         done < <(awk 'NR>1 && NF>=3{print $3}' "$alljobs")
         # Fire only from a DOWNSTREAM/terminal step -- one that depends on an
         # earlier step (the flag's 2nd field, the dependency, is non-zero). A
@@ -849,11 +849,11 @@ else
         # complete up front, so succN>=total already pins the true last job; this
         # guard just makes the harness agree.
         myDep=`echo "$flag" | cut -d. -f2`
-        runMark="$smartSlurmLogDir/.emailed.effrun"
+        runMark="$smartSbatchLogDir/.emailed.effrun"
         if [ "${total:-0}" -ge 1 ] && [ "${succN:-0}" -ge "${total:-0}" ] && [ "${myDep:-0}" != 0 ] && [ ! -f "$runMark" ]; then
             : > "$runMark"
-            effTable=`"$(dirname "$0")/checkRunGrid" --efficiency --no-color --log "$smartSlurmLogDir" 2>/dev/null`
-            _ss_sendmail "SmartSlurm run complete: resource efficiency" \
+            effTable=`"$(dirname "$0")/checkRunGrid" --efficiency --no-color --log "$smartSbatchLogDir" 2>/dev/null`
+            _ss_sendmail "SmartSbatch run complete: resource efficiency" \
                 "All jobs in this run finished successfully.\n\n$effTable\n\nSee 'checkRun' (press e) for the per-step breakdown."
         fi
     fi

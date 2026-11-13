@@ -1,7 +1,7 @@
 # resource-estimation testbed
 
 A tidied, self-contained replacement for the old `useMemTime*` / `findNumber.sh` resource
-scripts. It exercises SmartSlurm's jobRecord machinery: recording mem/time per input size,
+scripts. It exercises SmartSbatch's jobRecord machinery: recording mem/time per input size,
 fitting a curve once there are ≥3 records, estimating resources for new inputs, and
 incrementing resources on an OOM/OOT **auto-rerun** (or **manual rerun** if that's
 exhausted).
@@ -36,7 +36,7 @@ where you want.
 
 ## Test protocol
 
-Copy all three files into a fresh run directory, with `SmartSlurm/bin` on `PATH`.
+Copy all three files into a fresh run directory, with `SmartSbatch/bin` on `PATH`.
 
 **1. Clean run — seed the fit (all jobs succeed):**
 ```bash
@@ -45,7 +45,7 @@ runAsPipeline --script "jobrecords_pipeline.sh jobrecords_manifest.txt" \
 ```
 Four `load` jobs run at four sizes → four jobRecords. With ≥3 records, the next run fits a
 mem/time curve instead of using defaults (watch for the "fit" vs "less than 3 records"
-message from `estimateResource.sh` in `.smartSlurm.log`).
+message from `estimateResource.sh` in `.smartSbatch.log`).
 
 **2. Rerun test — force an overshoot past the request:**
 ```bash
@@ -53,7 +53,7 @@ FAIL_PROB=1 FAIL_MODE=oom OVERSHOOT_X=4 \
   runAsPipeline --script "jobrecords_pipeline.sh jobrecords_manifest.txt" \
                 --sbatch-options "sbatch -p short -c 1 --mem 64M -t 2:00" --tmp noTmp
 ```
-The large sample's `load` job exceeds `--mem` → OOM → SmartSlurm requeues it with more
+The large sample's `load` job exceeds `--mem` → OOM → SmartSbatch requeues it with more
 memory (auto-rerun); if the increment is exhausted, the manual rerun menu takes over. Use
 `FAIL_MODE=oot` (with a small `-t`, e.g. `-t 1:00`) to test the time path instead.
 

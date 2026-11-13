@@ -6,16 +6,16 @@
 # Job record folder can be shared with a group of users.
 # Or user can have their own copy of config as: ~/.SmartSbatch/config/config.txt, 
 # User can modify ~/.SmartSbatch/config/config.txt anyway they want. User's setting overwrite the group settting. 
-# export smartSbatchJobRecordDir=/data/groupABC/smartSlurm
+# export smartSbatchJobRecordDir=/data/groupABC/smartSbatch
 export smartSbatchJobRecordDir=$HOME/.SmartSbatch 
 
-export smartSlurmLogDir=smartSlurmLog
+export smartSbatchLogDir=smartSbatchLog
 
 # input folder name
-export smartSlurmInputDir=inputSmartSbatch
+export smartSbatchInputDir=inputSmartSbatch
 
 # output folder path 
-export smartSlurmOutputDir=$PWD/outputSmartSbatch
+export smartSbatchOutputDir=$PWD/outputSmartSbatch
 
 export firstBatchCount=5
 
@@ -27,7 +27,7 @@ export defaultExtraMem=1000      # in M. extra memory than the estinated memory
 
 export defaultSlurmAcc=""
 
-export condaEnvPath=$HOME/.conda/envs/smartSlurmEnv
+export condaEnvPath=$HOME/.conda/envs/smartSbatchEnv
 
 # Genernal partions, ordered by maximum allowed run-time in hours
 export partition1Name=short

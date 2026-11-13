@@ -12,7 +12,7 @@ for param in "$@"; do
 done
 echo "$output"
 
-cd $smartSlurmLogDir #`dirname $1` #${1%/$smartSlurmLogDir/*}
+cd $smartSbatchLogDir #`dirname $1` #${1%/$smartSbatchLogDir/*}
 #echo pwd `pwd`
 
 sleep 2
@@ -21,7 +21,7 @@ START=`date +%s`
 
 counter=0
 
-jobName=$1 #`basename $1` #${1#*/$smartSlurmLogDir/}
+jobName=$1 #`basename $1` #${1#*/$smartSbatchLogDir/}
 reservedMem=$2
 reservedTime=$3
 defaultMem=$4
@@ -41,7 +41,7 @@ defaultMem=$4
 
 
 #[ -f $jobName.adjust ] && reservedMem=`cat $jobName.adjust | cut -d' ' -f1`
-[ -f $jobName.adjust ] && IFS=' ' read -r inputSize reservedMem reservedTime extraM  <<< `cat $smartSlurmLogDir/$jobName.adjust`
+[ -f $jobName.adjust ] && IFS=' ' read -r inputSize reservedMem reservedTime extraM  <<< `cat $smartSbatchLogDir/$jobName.adjust`
 
 [ -z "$reservedTime" ] && reservedTime=0; 
 

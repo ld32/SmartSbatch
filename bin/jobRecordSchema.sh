@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# jobRecordSchema.sh -- single source of truth for the SmartSlurm jobRecord
+# jobRecordSchema.sh -- single source of truth for the SmartSbatch jobRecord
 # schema. Source it (it defines variables and functions, no side effects):
 #
 #     . "$(dirname "$0")/jobRecordSchema.sh"
@@ -141,8 +141,8 @@ jrLint() {
 _jrWarnUnknown() {
     local f=$1 m="$1.schemaWarning"
     [ -f "$m" ] && [ ! "$f" -nt "$m" ] && return 0
-    echo "SmartSlurm: WARNING: jobRecord store matches no known schema (not v1 or v2); left untouched: $f" >&2
-    echo "SmartSlurm:          inspect it with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+    echo "SmartSbatch: WARNING: jobRecord store matches no known schema (not v1 or v2); left untouched: $f" >&2
+    echo "SmartSbatch:          inspect it with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
     : > "$m" 2>/dev/null
 }
 
@@ -194,14 +194,14 @@ _jrMigrateUnlocked() {
     tmp="$f.v2.$$"
     if ! jrEmitV2 "$f" > "$tmp" || [ ! -s "$tmp" ]; then
         rm -f "$tmp" "$bak"
-        echo "SmartSlurm: ERROR: jobRecord migration produced no output; store left UNTOUCHED: $f" >&2
+        echo "SmartSbatch: ERROR: jobRecord migration produced no output; store left UNTOUCHED: $f" >&2
         return 1
     fi
     # integrity gate ------------------------------------------------------------
     outrows=$(( $(grep -c . "$tmp") - 1 ))              # data rows (minus the header)
     if [ "$(jrSchemaVersion "$tmp")" != 2 ] || [ "${outrows:-0}" -ne "${recog:-0}" ]; then
         rm -f "$tmp" "$bak"
-        echo "SmartSlurm: ERROR: jobRecord migration failed its integrity check (output canonical-v2? / kept ${outrows:-0} of ${recog:-0} recognizable rows); store left UNTOUCHED: $f -- inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+        echo "SmartSbatch: ERROR: jobRecord migration failed its integrity check (output canonical-v2? / kept ${outrows:-0} of ${recog:-0} recognizable rows); store left UNTOUCHED: $f -- inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
         return 1
     fi
     # commit --------------------------------------------------------------------
@@ -209,9 +209,9 @@ _jrMigrateUnlocked() {
     if [ "${bad:-0}" -gt 0 ]; then
         unrec="$f.unrecognized.$(date +%Y-%m-%d_%H-%M-%S).txt"
         jrUnrecognizedLines "$bak" > "$unrec" 2>/dev/null
-        echo "SmartSlurm: WARNING: migrated $f to v2; $bad row(s) matched no known schema and were NOT carried over (saved to $unrec; full original in $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+        echo "SmartSbatch: WARNING: migrated $f to v2; $bad row(s) matched no known schema and were NOT carried over (saved to $unrec; full original in $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
     else
-        echo "SmartSlurm: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
+        echo "SmartSbatch: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
     fi
 }
 
@@ -255,7 +255,7 @@ jrAppendLine() {
     else
         [ -f "$f" ] || printf '%s\n' "$JR_HEADER_V2" > "$f"
         printf '%s\n' "$row" >> "$f"
-        echo "SmartSlurm: WARNING: jobRecord append proceeded WITHOUT the lock (contention/stale): $f" >&2
+        echo "SmartSbatch: WARNING: jobRecord append proceeded WITHOUT the lock (contention/stale): $f" >&2
     fi
 }
 

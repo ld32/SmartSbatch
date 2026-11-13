@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
 # jrRepair.sh -- one-time, MANUAL converter of a legacy (v1) jobRecord store to
-# the v2 schema. Run once per store after upgrading SmartSlurm.
+# the v2 schema. Run once per store after upgrading SmartSbatch.
 #
 #   jrRepair.sh [jobRecordDir]     # default: $smartSbatchJobRecordDir
 #   jrRepair.sh --dry-run [dir]    # report what would change; write nothing

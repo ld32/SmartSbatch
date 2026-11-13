@@ -1,15 +1,15 @@
-# SmartSlurm example scripts
+# SmartSbatch example scripts
 
 Small, self-contained rAP pipelines that double as **best-practice templates** for
-converting a pipeline to SmartSlurm and as **quick smoke tests** on the cluster. Every
+converting a pipeline to SmartSbatch and as **quick smoke tests** on the cluster. Every
 step uses only common shell tools (`tr`, `sed`, `awk`, `sort`, `wc`, `cut`, `printf`),
 asks for trivial resources, and produces output a human can verify by eye.
 
 ## How to run any of them
 
 ```bash
-# add the SmartSlurm bin/ to PATH first (so rAP finds its sibling tools)
-export PATH=/path/to/SmartSlurm/bin:$PATH
+# add the SmartSbatch bin/ to PATH first (so rAP finds its sibling tools)
+export PATH=/path/to/SmartSbatch/bin:$PATH
 
 # preview the conversion without submitting anything:
 runAsPipeline --script "demo_linear_fan_branch.sh demo_manifest.txt" --tmp noTmp --mode dryrun
@@ -21,7 +21,7 @@ runAsPipeline --script "demo_linear_fan_branch.sh demo_manifest.txt" \
 ```
 
 Run each example in its **own directory** — pipelines share step names, so running two in
-one directory would mix their `smartSlurmLog/` job-flag namespaces.
+one directory would mix their `smartSbatchLog/` job-flag namespaces.
 
 ## What's here
 
@@ -34,7 +34,7 @@ one directory would mix their `smartSlurmLog/` job-flag namespaces.
 | `resource-estimation/` | `#@end` | **jobRecords / resource estimation**: a `load` step whose memory + wall-time scale with input size, for testing curve-fitting and OOM/OOT auto-rerun. See its own README. | `load.<s>.txt` per sample; jobRecords across 4 sizes |
 
 `demo_*` and `phrase_*` each use their own manifest. The `bashScript-tutorial/` scripts use
-`createNumberFiles.sh` + `findNumber.sh` from `SmartSlurm/bin/`.
+`createNumberFiles.sh` + `findNumber.sh` from `SmartSbatch/bin/`.
 
 ## `#@end` vs legacy
 

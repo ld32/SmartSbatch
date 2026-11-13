@@ -7,11 +7,11 @@ Usage="Usage: $0 full_path_to_flag_folder \n  Note: this script will go through 
 echo Running: $0  $@
 
 
-[ -f $smartSlurmLogDir/allJobs.txt ] || { echo -e "job id file $smartSlurmLogDir/allJobs.txt does not exist\n$Usage"; exit 1; }
+[ -f $smartSbatchLogDir/allJobs.txt ] || { echo -e "job id file $smartSbatchLogDir/allJobs.txt does not exist\n$Usage"; exit 1; }
 
 # jobid, deps, flag, software, ref, input, inputSize
-if [ -f $smartSlurmLogDir/allJobs.txt ]; then 
-    lines=`grep -v ^job_id $smartSlurmLogDir/allJobs.txt` # | awk 'NF>2{print $1, $2, $3}'`
+if [ -f $smartSbatchLogDir/allJobs.txt ]; then 
+    lines=`grep -v ^job_id $smartSbatchLogDir/allJobs.txt` # | awk 'NF>2{print $1, $2, $3}'`
 else 
     exit 1; 
 fi 
@@ -47,18 +47,18 @@ else
             #echo look for the job flag for $j
             job=`echo $lines | awk '{if ($1 ~ /'"$j/"') print $3;}'`
             #[ -z "$job" ] && { echo -e "job name not found!"; exit; }
-            [ -f "$smartSlurmLogDir/$job.success" ] && echo This job was done! $job || { allDone=no; break;}
+            [ -f "$smartSbatchLogDir/$job.success" ] && echo This job was done! $job || { allDone=no; break;}
         done
 
         if [ -z "$allDone" ]; then
             date
-            #ls -lrt $smartSlurmLogDir
+            #ls -lrt $smartSbatchLogDir
             echo Dependants for $name are all done. Ready to adjust mem/runtime...
 
-            echo -e "Re-adjust resource by upsteam job job $SLURM_JOB_ID:" >> $smartSlurmLogDir/$name.out
-            grep ^$SLURM_JOB_ID $smartSlurmLogDir/allJobs.txt | awk '{print $1,  $2,  $3}' >> $smartSlurmLogDir/$name.out
+            echo -e "Re-adjust resource by upsteam job job $SLURM_JOB_ID:" >> $smartSbatchLogDir/$name.out
+            grep ^$SLURM_JOB_ID $smartSbatchLogDir/allJobs.txt | awk '{print $1,  $2,  $3}' >> $smartSbatchLogDir/$name.out
 
-            if [ -f $smartSlurmLogDir/$name.adjust ]; then
+            if [ -f $smartSbatchLogDir/$name.adjust ]; then
                 echo Already adjusted? Directly release and run.
                 scontrol release $id
                 continue
@@ -74,7 +74,7 @@ else
 
             #echo Got estimation inputsize: $inputSize mem: $mem  time: $min
 
-            #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> $smartSlurmLogDir/$name.out
+            #echo Got estimation inputsize: $inputSize mem: $mem  time: $min  >> $smartSbatchLogDir/$name.out
             #hours=$((($min + 59) / 60))
 
             #echo looking partition for hour: $hours
@@ -83,7 +83,7 @@ else
             # todo: should save the partition in the allJobs.txt
             #partition=`scontrol show job $id | grep Partition= | awk '{for(i=1;i<=NF;i++) if ($i ~ /Partition=/) {split($i,a,"="); print a[2];}}'`
 
-            partition=`grep "^#myMem=" $smartSlurmLogDir/$name.sh | awk -F'myPartition=' '{print $2}' | awk '{print $1}'`
+            partition=`grep "^#myMem=" $smartSbatchLogDir/$name.sh | awk -F'myPartition=' '{print $2}' | awk '{print $1}'`
           
             echo find original partition: $partition
 
@@ -100,7 +100,7 @@ else
 
             echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
 
-            echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> $smartSlurmLogDir/$name.out
+            echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> $smartSbatchLogDir/$name.out
 
             scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
             #scontrol show job $id
@@ -115,7 +115,7 @@ else
         fi
     done
 fi
-#rm -r $smartSlurmLogDir/downsteamjob.adjusting 2>/dev/null
+#rm -r $smartSbatchLogDir/downsteamjob.adjusting 2>/dev/null
 
 #summarizeRunReleaseHoldings.sh    
 
@@ -141,10 +141,10 @@ for line in $lines; do
         ref=${arrIN[4]}  ; ref=${ref//\//-}
         inputs="${arrIN[5]}"
 
-        if [ -f $smartSlurmLogDir/$name.success ]; then
+        if [ -f $smartSbatchLogDir/$name.success ]; then
             toSend="$toSend\n${line:0:60} Done"
             succ=$((succ + 1))
-        elif [ -f $smartSlurmLogDir/$name.failed ]; then
+        elif [ -f $smartSbatchLogDir/$name.failed ]; then
             toSend="$toSend\n${line:0:60} Failed"
             fail=$((fail + 1))
         elif [[ "$out" == *$id-R* ]]; then # && [[ "$id" != "$SLURM_JOBID" ]]; then
@@ -155,12 +155,12 @@ for line in $lines; do
             pending=$((pending + 1))
             if [ $unholdCounter -gt 0 ]; then 
                 thisStep=$(echo "$name" | cut -d '.' -f 1-2)
-                if [[ $thisStep == $currentStep ]] && [[ "$deps" == null ]] && grep " \-H " $smartSlurmLogDir/$name.sh && [ ! -f $smartSlurmLogDir/$name.adjust ]; then 
+                if [[ $thisStep == $currentStep ]] && [[ "$deps" == null ]] && grep " \-H " $smartSbatchLogDir/$name.sh && [ ! -f $smartSbatchLogDir/$name.adjust ]; then 
                     unholdCounter=$((unholdCounter - 1))
                     
                     echo Trying to release: $name 
 
-                    echo Job is beging released by $SLURM_JOBID $currentName >> $smartSlurmLogDir/$name.out
+                    echo Job is beging released by $SLURM_JOBID $currentName >> $smartSbatchLogDir/$name.out
 
                     IFS=' ' read -r inputSize mem min extraMem <<< $(estimateResource.sh $program ${ref//\//-} $inputs $name 0 0 adjust)
                     
@@ -185,13 +185,13 @@ for line in $lines; do
 
                         echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem}
 
-                        echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> $smartSlurmLogDir/$name.out
+                        echo running: scontrol update jobid=$id timelimit=$time partition=$partition MinMemoryNode=${mem} >> $smartSbatchLogDir/$name.out
 
                         scontrol update JobId=$id TimeLimit=$time Partition=$partition  MinMemoryNode=${mem}
                         #scontrol show job $id
 
                         scontrol release $id
-                        echo -e "Job is beging released by $SLURM_JOBID $currentName with new mem and time\n" >> $smartSlurmLogDir/$name.out
+                        echo -e "Job is beging released by $SLURM_JOBID $currentName with new mem and time\n" >> $smartSbatchLogDir/$name.out
                         set +x
                     # didn't get estimate, but already have 3 successful jobs, release one job anyway
                     # because jobRecord need to be unique by programName + reference + inputSize + memory
@@ -199,12 +199,12 @@ for line in $lines; do
                     else
                         unholdCounter=0; 
                         echo Fail to estimate new resource. Directly release one job anyway. 
-                        echo -e "Job is beging direcly released by $SLURM_JOBID $currentName\n" >> $smartSlurmLogDir/$name.out
+                        echo -e "Job is beging direcly released by $SLURM_JOBID $currentName\n" >> $smartSbatchLogDir/$name.out
                         scontrol release $id 
                     fi
                 fi
             fi    
-        elif [ -f $smartSlurmLogDir/$name.failed.requeued.1.time ]; then 
+        elif [ -f $smartSbatchLogDir/$name.failed.requeued.1.time ]; then 
             toSend="$toSend\n${line:0:40} Requeued"
             requeue=$((requeue + 1))    
         else
@@ -222,7 +222,7 @@ current=$((succ + fail + requeue))
 total=$((succ + fail + running + pending + +requeue + unknown))
 s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$total Pending:$pending/$total Fail:$fail/$total Unknown:$unknown/$total"
 
-[ -f $smartSlurmLogDir/allJobs.txt ] && echo -e "$s\n$toSend" > $smartSlurmLogDir/summary.$SLURMJOB_ID
+[ -f $smartSbatchLogDir/allJobs.txt ] && echo -e "$s\n$toSend" > $smartSbatchLogDir/summary.$SLURMJOB_ID
 
 
 # if [ $((running + pending)) -le 5 ]; then
@@ -232,10 +232,10 @@ s="$current/$total Succ:$succ/$total Requeue:$requeue/$total Running:$running/$t
 
 if [ $running -eq 0 ] && [ $pending -eq 0 ]; then 
     
-    echo This should be the last job for this run... >> $smartSlurmLogDir/summary.$SLURMJOB_ID
+    echo This should be the last job for this run... >> $smartSbatchLogDir/summary.$SLURMJOB_ID
     
 else 
-    rm $smartSlurmLogDir/summary.run 2>/dev/null
+    rm $smartSbatchLogDir/summary.run 2>/dev/null
 fi 
 
 

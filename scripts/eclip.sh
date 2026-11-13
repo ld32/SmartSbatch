@@ -95,7 +95,7 @@ set -ex
 outDir="`pwd`/eclipOut"
 
 #loopstart:dir1
-for dir1 in `ls -v -d smartSlurmInputs/*/`; do
+for dir1 in `ls -v -d smartSbatchInputs/*/`; do
     echo working on dir1:  $dir1
     dir1=${dir1%/}
     
@@ -122,8 +122,8 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             echo working on readgroup: $readgroup
             r2=${r1%_*}_2${r1##*_1}
             
-            mkdir -p $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup
-            cd $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup
+            mkdir -p $outDir/${dir1#smartSbatchInputs/}/$dir2/$readgroup
+            cd $outDir/${dir1#smartSbatchInputs/}/$dir2/$readgroup
             
             # Identify unique molecular identifiers (UMIs) (SE): Use umi_tools to extract unique molecular barcodes.
 
@@ -354,9 +354,9 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
                 samtools sort -o EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDup.bam; \
                 samtools index EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam  
 
-                #[ -f $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam ] && 
+                #[ -f $outDir/${dir1#smartSbatchInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam ] && 
                 
-                bamList="$bamList $outDir/${dir1#smartSlurmInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam"
+                bamList="$bamList $outDir/${dir1#smartSbatchInputs/}/$dir2/$readgroup/EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam"
                 #Barcode_collapse_se (SE): takes output from STAR genome mapping. Use umi_tools dedup to identify the extracted random-mer from the previous step and perform PCR duplicate removal.
 
                 #umi_tools dedup \
@@ -370,7 +370,7 @@ for dir1 in `ls -v -d smartSlurmInputs/*/`; do
             cd -    
         done    
     
-        cd $outDir/${dir1#smartSlurmInputs/}/$dir2/
+        cd $outDir/${dir1#smartSbatchInputs/}/$dir2/
 
         #Samtools  merge (PE only): Takes inputs from multiple final bam files.  Merges the two technical replicates for further downstream analysis.  
         #samtools  merge EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.merged.bam EXAMPLE_PE.rep2_clip.$barcodeID.r1.fq.genome-mappedSo.rmDupSo.bam EXAMPLE_PE.rep2_clip.D8f.r1.fq.genome-mappedSo.rmDupSo.bam; \

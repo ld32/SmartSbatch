@@ -23,8 +23,8 @@ rsyncToTmp() {
   [ -z "$1" ] && { echo "Usage: $0 </tmp/indexPath> </tmp/gtfPath> </tmp/bowtieIndexPath> ... "; return; } 
   for v in $@; do
       echo Working to copy: $v, waiting lock...
-      [[ $v == /tmp/smartSlurm/* ]] || continue
-      ls ${v#/tmp/smartSlurm/}* >/dev/null 2>&1 || { echo Reference file or folder not exist: ${v#/tmp/smartSlurm}; continue; } 
+      [[ $v == /tmp/smartSbatch/* ]] || continue
+      ls ${v#/tmp/smartSbatch/}* >/dev/null 2>&1 || { echo Reference file or folder not exist: ${v#/tmp/smartSbatch}; continue; } 
       lockFile=/tmp/${v//\//-}
       
       while ! ( set -o noclobber; echo "$$" > "$lockFile") 2> /dev/null; do
@@ -35,8 +35,8 @@ rsyncToTmp() {
       trap 'rm -f "$lockFile"; exit $?' INT TERM EXIT
       #echo checking:
       mkdir -p ${v%/*}
-      rsync  -aL ${v#/tmp/smartSlurm/}* ${v%/*}/
-      chmod -R 777 /tmp/smartSlurm/
+      rsync  -aL ${v#/tmp/smartSbatch/}* ${v%/*}/
+      chmod -R 777 /tmp/smartSbatch/
       find  ${v%}* -type f -exec chmod -x '{}' \;
       
       echo Copying is done for $v
@@ -54,7 +54,7 @@ setPath() {
       vx=${!v}
       [[ $vx == /tmp/* ]] && continue
       #vx=`realpath $vx` 
-      eval $v=/tmp/smartSlurm/$vx
+      eval $v=/tmp/smartSbatch/$vx
   done
   #echo new path: $gtf, $index
 }
@@ -68,7 +68,7 @@ setPathBack() {
       vx=${!v}
       [[ $vx != /tmp/* ]] && continue
       #vx=`realpath $vx` 
-      eval $v=${vx#/tmp/smartSlurm/}
+      eval $v=${vx#/tmp/smartSbatch/}
   done
   #echo new path: $gtf, $index
 }

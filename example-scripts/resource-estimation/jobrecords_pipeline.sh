@@ -3,7 +3,7 @@
 # rAP EXAMPLE — "jobrecords": resource estimation / auto-rerun testbed
 # =============================================================================
 # One `load` job per sample; each job's MEMORY and WALL-TIME scale with its
-# input size (via sizedLoad.sh). Run it over several sizes so SmartSlurm records
+# input size (via sizedLoad.sh). Run it over several sizes so SmartSbatch records
 # mem/time at each size and can fit a curve; set FAIL_PROB=1 to force an OOM/OOT
 # overshoot and exercise the resource auto-increment + rerun path.
 #

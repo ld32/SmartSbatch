@@ -100,7 +100,7 @@ export PS4='Line $LINENO: '
 
 outDir="`pwd`/eclipOut"
 #loopStart:dir
-for dir1 in `ls -v -d smartSlurmInputs/*/`; do
+for dir1 in `ls -v -d smartSbatchInputs/*/`; do
     echo working on dir1:  $dir1
     dir1=${dir1%/}
     dir=`basename $dir1`

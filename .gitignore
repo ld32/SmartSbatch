@@ -2,7 +2,7 @@
 .DS_Store
 ._*
 test/checkrun_ui_tests.sh
-smartSlurmLog/
+smartSbatchLog/
 gap.txt
 *.dryrun.sh
 __pycache__/

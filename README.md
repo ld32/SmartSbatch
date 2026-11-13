@@ -20,11 +20,11 @@ Two companion tools help you watch and debug runs:
 
 - [Features](#features)
 - [Setup](#setup)
-  - [The `smartslurm` command](#the-smartslurm-command)
+  - [The `smartsbatch` command](#the-smartsbatch-command)
 - [ssbatch: smart sbatch](#ssbatch-smart-sbatch)
   - [Usage](#usage)
   - [Quick example](#quick-example)
-  - [Turning SmartSlurm off](#turning-smartslurm-off)
+  - [Turning SmartSbatch off](#turning-smartsbatch-off)
   - [How ssbatch works](#how-ssbatch-works)
     - [jobRecords.txt](#jobrecordtxt)
     - [config.txt](#configtxt)
@@ -68,8 +68,8 @@ Two companion tools help you watch and debug runs:
 - **Auto-selects the partition** that matches the requested run-time.
 - **Auto-resubmits** jobs that die out-of-memory (OOM) or out-of-time (OOT), with doubled resources.
 - **Optional checkpointing**: snapshot a long job before it hits its limit, then resume from the snapshot.
-- **Consolidated emails**: instead of one email per job, SmartSlurm sends one per-sample alert (failed / completed) and one per-run efficiency summary — text-only, no inbox flood.
-- **Conda-style activation**: a one-time `bash smartSlurmSetup.sh` adds a `smartslurm` command to your shell (it edits `~/.bashrc` for you — no manual `export`); `smartslurm activate` turns SmartSlurm on (aliasing `sbatch` → smart `ssbatch`, with a `{smartSlurm} ` prompt indicator) and `smartslurm deactivate` cleanly reverses it.
+- **Consolidated emails**: instead of one email per job, SmartSbatch sends one per-sample alert (failed / completed) and one per-run efficiency summary — text-only, no inbox flood.
+- **Conda-style activation**: a one-time `bash smartSbatchSetup.sh` adds a `smartsbatch` command to your shell (it edits `~/.bashrc` for you — no manual `export`); `smartsbatch activate` turns SmartSbatch on (aliasing `sbatch` → smart `ssbatch`, with a `{smartSbatch} ` prompt indicator) and `smartsbatch deactivate` cleanly reverses it.
 - **Resource efficiency report**: a per-run `efficiency.tsv` and an `htop`-style view in `checkRun` (press `e`) showing time/memory used vs allocated, per sample and per step.
 - **(runAsPipeline) Dependency management**: steps wait for their prerequisites automatically.
 - **(runAsPipeline) Explicit `#@ … #@end` blocks**: write a step's body verbatim to a per-job script (`awk`, quotes, heredocs, multi-line all survive), instead of flattening it into a single `--wrap` string.
@@ -87,61 +87,61 @@ yourself** (avoiding that manual `PATH` export is the whole point): the script
 edits your `~/.bashrc` for you.
 
 ```bash
-# 1. Download SmartSlurm
-git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
-cd $HOME/SmartSlurm
+# 1. Download SmartSbatch
+git clone https://github.com/ld32/SmartSbatch.git $HOME/SmartSbatch
+cd $HOME/SmartSbatch
 
-# 2. Run the setup script once — it adds the `smartslurm` command to your ~/.bashrc
-bash smartSlurmSetup.sh
+# 2. Run the setup script once — it adds the `smartsbatch` command to your ~/.bashrc
+bash smartSbatchSetup.sh
 
-# 3. Open a new shell (or: source ~/.bashrc), then turn SmartSlurm on
-smartslurm activate
+# 3. Open a new shell (or: source ~/.bashrc), then turn SmartSbatch on
+smartsbatch activate
 ```
 
-`smartSlurmSetup.sh` is the whole install step. It appends a small, clearly
+`smartSbatchSetup.sh` is the whole install step. It appends a small, clearly
 marked block to your `~/.bashrc` — you do **not** write this by hand:
 
 ```bash
-# >>> smartSlurm initialize >>>
-export SMARTSLURM_HOME="/home/you/SmartSlurm"
-[ -f "$SMARTSLURM_HOME/bin/smartslurm.sh" ] && . "$SMARTSLURM_HOME/bin/smartslurm.sh"
-# <<< smartSlurm initialize <<<
+# >>> smartSbatch initialize >>>
+export SMARTSBATCH_HOME="/home/you/SmartSbatch"
+[ -f "$SMARTSBATCH_HOME/bin/smartsbatch.sh" ] && . "$SMARTSBATCH_HOME/bin/smartsbatch.sh"
+# <<< smartSbatch initialize <<<
 ```
 
-The script writes that block (and `smartslurm uninstall` removes it again). The
-block only teaches your shell the `smartslurm` command; it does **not** put
-SmartSlurm on your `PATH` until you run `smartslurm activate`. Re-running
-`bash smartSlurmSetup.sh` is safe — it updates the block in place (backing up the
+The script writes that block (and `smartsbatch uninstall` removes it again). The
+block only teaches your shell the `smartsbatch` command; it does **not** put
+SmartSbatch on your `PATH` until you run `smartsbatch activate`. Re-running
+`bash smartSbatchSetup.sh` is safe — it updates the block in place (backing up the
 rc first) instead of adding a second copy. All the logic lives in
-`bin/smartslurm.sh`, so a later `git pull` upgrades behavior without rewriting
+`bin/smartsbatch.sh`, so a later `git pull` upgrades behavior without rewriting
 your rc file.
 
-### The `smartslurm` command
+### The `smartsbatch` command
 
 | Command | What it does |
 |---------|--------------|
-| `smartslurm activate` | Puts SmartSlurm on your `PATH` and **aliases `sbatch` → smart `ssbatch`**, so existing scripts get automatic resource estimation for free. It prints a notice that the alias is in effect (previously this was silent) and prefixes your prompt with `{smartSlurm} ` so you can always see when SmartSlurm is active. |
-| `smartslurm deactivate` | Removes **only** SmartSlurm's own `PATH` entries and prompt prefix, restoring the system `sbatch`. Anything you added *after* activating — a `conda activate`, a `module load`, your own exports — is left untouched. |
-| `smartslurm status` | Reports whether SmartSlurm is active and whether `sbatch` currently resolves to the smart alias or the system binary. |
-| `smartslurm uninstall` | Removes the initialize block from your rc file (with a backup). New shells will no longer know the command. |
+| `smartsbatch activate` | Puts SmartSbatch on your `PATH` and **aliases `sbatch` → smart `ssbatch`**, so existing scripts get automatic resource estimation for free. It prints a notice that the alias is in effect (previously this was silent) and prefixes your prompt with `{smartSbatch} ` so you can always see when SmartSbatch is active. |
+| `smartsbatch deactivate` | Removes **only** SmartSbatch's own `PATH` entries and prompt prefix, restoring the system `sbatch`. Anything you added *after* activating — a `conda activate`, a `module load`, your own exports — is left untouched. |
+| `smartsbatch status` | Reports whether SmartSbatch is active and whether `sbatch` currently resolves to the smart alias or the system binary. |
+| `smartsbatch uninstall` | Removes the initialize block from your rc file (with a backup). New shells will no longer know the command. |
 
 > [!NOTE]
-> The prompt prefix uses curly braces — `{smartSlurm} ` — deliberately distinct
+> The prompt prefix uses curly braces — `{smartSbatch} ` — deliberately distinct
 > from conda's `(env) `. The two coexist cleanly: activating or deactivating one
 > never disturbs the other's prompt or `PATH`, in any order.
 
 > [!TIP]
-> Want SmartSlurm's tools without aliasing `sbatch` (for example, only inside one
+> Want SmartSbatch's tools without aliasing `sbatch` (for example, only inside one
 > pipeline)? Skip `activate` and either call `ssbatch` / `runAsPipeline` by full
-> path, or add just `$HOME/SmartSlurm/bin` to your `PATH` yourself — that exposes
-> `ssbatch` while leaving the system `sbatch` in place. `smartslurm activate` is
+> path, or add just `$HOME/SmartSbatch/bin` to your `PATH` yourself — that exposes
+> `ssbatch` while leaving the system `sbatch` in place. `smartsbatch activate` is
 > the convenient, fully reversible default.
 
 **Optional** — only needed for the workflow-chart (`w`/`g`) option in `checkRun`:
 
 ```bash
 module load conda/miniforge3/24.11.3-0
-mamba create -n smartSlurmEnv -c conda-forge graphviz
+mamba create -n smartSbatchEnv -c conda-forge graphviz
 ```
 
 > [!NOTE]
@@ -194,10 +194,10 @@ ssbatch [-P PROGRAM] [-I INPUTS] [-F FLAG] [SBATCH_OPTIONS] SCRIPT.sh [ARGS] [dr
 
 ```bash
 # One-time setup (see "Setup" above), then activate
-git clone https://github.com/ld32/SmartSlurm.git $HOME/SmartSlurm
-bash $HOME/SmartSlurm/smartSlurmSetup.sh
-source ~/.bashrc          # load the new `smartslurm` command (or open a new shell)
-smartslurm activate
+git clone https://github.com/ld32/SmartSbatch.git $HOME/SmartSbatch
+bash $HOME/SmartSbatch/smartSbatchSetup.sh
+source ~/.bashrc          # load the new `smartsbatch` command (or open a new shell)
+smartsbatch activate
 
 # Make some test inputs
 mkdir -p SmartSbatchTest && cd SmartSbatchTest
@@ -241,23 +241,23 @@ cancelAllJobs
 > [!NOTE]
 > Re-submitting a job with the **same program and input** that already succeeded will prompt you to confirm the rerun, so you don't silently repeat completed work.
 
-## Turning SmartSlurm off
+## Turning SmartSbatch off
 
-Use `smartslurm deactivate` to restore the system `sbatch` in the current shell.
-It removes only SmartSlurm's own `PATH` entries and prompt prefix, so anything
+Use `smartsbatch deactivate` to restore the system `sbatch` in the current shell.
+It removes only SmartSbatch's own `PATH` entries and prompt prefix, so anything
 you added after activating is preserved:
 
 ```bash
-smartslurm deactivate
+smartsbatch deactivate
 ```
 
 > [!NOTE]
 > **`unExport` is deprecated.** The old `source unExport; unExport` still works
-> as a thin shim that warns and delegates to `smartslurm deactivate`, but it will
-> be removed in a future release — switch to `smartslurm deactivate`. (The legacy
+> as a thin shim that warns and delegates to `smartsbatch deactivate`, but it will
+> be removed in a future release — switch to `smartsbatch deactivate`. (The legacy
 > `unExport` stripped whatever directory held the current `sbatch`, which could
-> remove the *system* `sbatch` from your `PATH` when SmartSlurm was not actually
-> aliasing it; `smartslurm deactivate` does not have that failure mode.)
+> remove the *system* `sbatch` from your `PATH` when SmartSbatch was not actually
+> aliasing it; `smartsbatch deactivate` does not have that failure mode.)
 
 ## How ssbatch works
 
@@ -298,7 +298,7 @@ rnaseq,findNumber,none,,46534,4395,9,2048,4,120,1,COMPLETED,ld32,node02,17198310
 ```
 
 > [!IMPORTANT]
-> **Upgrading from the old format.** Earlier SmartSlurm wrote a different, position-based `jobRecords.txt`. The tools read both, but to convert an existing store to the current schema once (recommended), run:
+> **Upgrading from the old format.** Earlier SmartSbatch wrote a different, position-based `jobRecords.txt`. The tools read both, but to convert an existing store to the current schema once (recommended), run:
 > ```bash
 > jrRepair.sh            # converts $smartSbatchJobRecordDir/jobRecords.txt in place
 > jrRepair.sh --dry-run  # preview only, writes nothing
@@ -307,16 +307,16 @@ rnaseq,findNumber,none,,46534,4395,9,2048,4,120,1,COMPLETED,ld32,node02,17198310
 
 ### config.txt
 
-Ships at `SmartSlurm/config/config.txt`. It defines the partition time limits, the `adjustPartition` function, and defaults such as where records and logs live.
+Ships at `SmartSbatch/config/config.txt`. It defines the partition time limits, the `adjustPartition` function, and defaults such as where records and logs live.
 
 > [!TIP]
-> Copy it to `~/.SmartSbatch/config/config.txt` to override settings for just yourself. Your personal copy wins over the shared one — handy on a shared cluster. (SmartSlurm refuses to run if your personal copy is *older* than the shared one, to stop you using a stale config; see [Upgrading](#upgrading) to refresh it.)
+> Copy it to `~/.SmartSbatch/config/config.txt` to override settings for just yourself. Your personal copy wins over the shared one — handy on a shared cluster. (SmartSbatch refuses to run if your personal copy is *older* than the shared one, to stop you using a stale config; see [Upgrading](#upgrading) to refresh it.)
 
 Key settings:
 
 ```bash
-export smartSbatchJobRecordDir=$HOME/.smartSlurm  # where jobRecords.txt + stats live
-export smartSlurmLogDir=smartSlurmLog            # per-run log dir (relative to your cwd)
+export smartSbatchJobRecordDir=$HOME/.smartSbatch  # where jobRecords.txt + stats live
+export smartSbatchLogDir=smartSbatchLog            # per-run log dir (relative to your cwd)
 
 export firstBatchCount=5   # runAsPipeline: how many independent jobs run before the rest are held
 export defaultMem=4096     # M   — used until estimation is available
@@ -346,8 +346,8 @@ Performed by `estimateResource.sh`. Two modes:
 Fitted plots are written under `$smartSbatchJobRecordDir/stats/` for inspection:
 
 <div align="center">
-<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.mem.png" width="45%" style="display:inline-block; margin-right:2%;">
-<img src="https://github.com/ld32/SmartSlurm/blob/master/stats/back/findNumber.none.time.png" width="45%" style="display:inline-block; margin-left:2%;">
+<img src="https://github.com/ld32/SmartSbatch/blob/master/stats/back/findNumber.none.mem.png" width="45%" style="display:inline-block; margin-right:2%;">
+<img src="https://github.com/ld32/SmartSbatch/blob/master/stats/back/findNumber.none.time.png" width="45%" style="display:inline-block; margin-left:2%;">
 </div>
 
 ### Partition selection
@@ -364,12 +364,12 @@ Optional. When enabled (the `checkpoint` mode in `runAsPipeline`, or a `.Checkpo
 
 ### Informative emails
 
-Slurm's own email is only a subject line. SmartSlurm instead sends **consolidated, text-only** notifications, so a many-sample pipeline no longer floods your inbox (and no longer litters `smartSlurmLog` with per-job plot pngs):
+Slurm's own email is only a subject line. SmartSbatch instead sends **consolidated, text-only** notifications, so a many-sample pipeline no longer floods your inbox (and no longer litters `smartSbatchLog` with per-job plot pngs):
 
 - **Per sample** — one **warning** the first time a step in that sample fails (telling you to re-run the same command), and one **confirmation** when the sample's last step completes.
 - **Per run** — a single **efficiency summary** when the whole run finishes successfully, carrying the per-sample [efficiency](#resource-efficiency) table and pointing you to `checkRun` (press `e`) for the per-step breakdown.
 
-Auto-requeues (OOM/OOT resizing) are silent — they're in-progress recovery, reported by the summaries and `checkRun`. Use `--email noSuccEmail` (failures only) or `--email noEmail` (none) to reduce volume further. The old per-job resource plots (the per-job/barchart gnuplot pngs and their CSVs) are no longer generated — efficiency now lives in `efficiency.tsv` and `checkRun` (press `e`), so nothing clutters `smartSlurmLog`.
+Auto-requeues (OOM/OOT resizing) are silent — they're in-progress recovery, reported by the summaries and `checkRun`. Use `--email noSuccEmail` (failures only) or `--email noEmail` (none) to reduce volume further. The old per-job resource plots (the per-job/barchart gnuplot pngs and their CSVs) are no longer generated — efficiency now lives in `efficiency.tsv` and `checkRun` (press `e`), so nothing clutters `smartSbatchLog`.
 
 ## ssbatch FAQ
 
@@ -403,7 +403,7 @@ Yes. Any standard sbatch option works and is passed through.
 <details>
 <summary><b>How does ssbatch know a job already ran?</b></summary>
 
-On success it creates `<flag>.success` in `smartSlurmLogDir`. That file's presence is how reruns are detected.
+On success it creates `<flag>.success` in `smartSbatchLogDir`. That file's presence is how reruns are detected.
 </details>
 
 ---
@@ -492,7 +492,7 @@ A block needs a clear end so the parser knows which lines belong to the job. The
 
 ### Explicit `#@end` (recommended)
 
-Close the block with a line containing exactly `#@end`. The body between the marker and `#@end` is written **verbatim** to a per-job script (`smartSlurmLog/jobs/<flag>/cmd.sh`) and that file is submitted:
+Close the block with a line containing exactly `#@end`. The body between the marker and `#@end` is written **verbatim** to a per-job script (`smartSbatchLog/jobs/<flag>/cmd.sh`) and that file is submitted:
 
 ```bash
 #@3,2,measure,,in,sbatch -p short -c 1 --mem 100M -t 5:00
@@ -552,7 +552,7 @@ Understanding **when** each line runs is critical when adapting scripts to use `
                  │   • any other line         → copy through unchanged                                    │
                  └──────────────────────────────────────────┬───────────────────────────────────────────┘
                                                              ▼
-                       smartSlurmLog/slurmPipeLine.<md5>.sh  (the "converted script")
+                       smartSbatchLog/slurmPipeLine.<md5>.sh  (the "converted script")
                                                              │
                  ┌───────────────────────── PHASE 2: SUBMIT (run the converted script) ──────────────────┐
                  │   plain lines  → run right now, on the submit host                                     │
@@ -563,7 +563,7 @@ Understanding **when** each line runs is critical when adapting scripts to use `
                  └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Phase 1 — Convert.** `runAsPipeline` reads your script once and writes a converted script named `smartSlurmLog/slurmPipeLine.<md5>.sh`. The `<md5>` is a hash of your script's contents, so re-running with an **unchanged** script skips reconversion and reuses the existing one.
+**Phase 1 — Convert.** `runAsPipeline` reads your script once and writes a converted script named `smartSbatchLog/slurmPipeLine.<md5>.sh`. The `<md5>` is a hash of your script's contents, so re-running with an **unchanged** script skips reconversion and reuses the existing one.
 
 **Phase 2 — Submit.** The converted script is executed top to bottom. Plain shell lines run **immediately, on the submit host**. Each `ssbatch` call **submits** a job and captures its ID — it does **not** run your command inline. Your command runs later, on a compute node, after its dependencies complete.
 
@@ -715,7 +715,7 @@ Stage 2: Submitting jobs
   alpha            1✓ 2✓ 3✓ 4✓✓✓ 5✓ 6✓
   bravo            1✓ 2✓ 3✓ 4✓✓✓ 5✓ 7✓
   charlie          1✓ 2✓ 3✓ 4✓✓✓ 5✓ 6✓
-Submitted 24, kept 0, error 0.  Details: less .smartSlurm.log  |  checkRun to monitor.
+Submitted 24, kept 0, error 0.  Details: less .smartSbatch.log  |  checkRun to monitor.
 ```
 
 - `✓` = submitted, `✗` = submission error, `-` = kept (an already-successful step that was skipped).
@@ -731,7 +731,7 @@ Two flags change the volume:
 | `-v` / `--verbose` | The old firehose — per-job "Working on inputs…", "Submitted batch job N", and the full jobs table. |
 | `-q` / `--quiet` | Errors only; nothing on success. |
 
-The full per-job detail is always written to `.smartSlurm.log` regardless of verbosity (`less .smartSlurm.log`).
+The full per-job detail is always written to `.smartSbatch.log` regardless of verbosity (`less .smartSbatch.log`).
 
 ## Tutorial
 
@@ -807,7 +807,7 @@ job_id       depend_on                      job_flag          program     refere
 After it runs:
 
 ```bash
-ls -l smartSlurmLog   # per-step .sh (job scripts), .out (logs), .success / .failed flags,
+ls -l smartSbatchLog   # per-step .sh (job scripts), .out (logs), .success / .failed flags,
                       # and (for #@end steps) a jobs/<flag>/cmd.sh
 checkRun              # interactive status grid + log/diagnosis browser
 cancelAllJobs         # cancel running/pending jobs from this directory
@@ -829,7 +829,7 @@ Each directory has its own README with the exact commands and expected output.
 
 ## checkRun: monitor and debug
 
-`checkRun` is an interactive monitor. **Run it from the directory where you launched `runAsPipeline`** (it reads `.smartSlurm.log` and `smartSlurmLog/` there):
+`checkRun` is an interactive monitor. **Run it from the directory where you launched `runAsPipeline`** (it reads `.smartSbatch.log` and `smartSbatchLog/` there):
 
 ```bash
 checkRun
@@ -853,7 +853,7 @@ Showing run: /n/scratch/users/.../myProject
    ...
 ```
 
-A band at the top names the run currently on screen (its full path). If other SmartSlurm runs exist in this directory, it also shows `--> N other run(s) available — press o to switch`.
+A band at the top names the run currently on screen (its full path). If other SmartSbatch runs exist in this directory, it also shows `--> N other run(s) available — press o to switch`.
 
 | Glyph | Meaning |
 |:-----:|---------|
@@ -874,7 +874,7 @@ A band at the top names the run currently on screen (its full path). If other Sm
 | `d b2` | **diagnose** — why it failed / what to do (runs [`diagnose.sh`](#diagnosesh-explain-one-job)) |
 | `a b2` | ask the AI helper about the job |
 | `r b2` | view the job's raw files (`.out` / `.err` / `.sh` …) |
-| `o` | browse other SmartSlurm log folders in this directory |
+| `o` | browse other SmartSbatch log folders in this directory |
 | `l` | list view (the classic per-job browser; all its capabilities are preserved) |
 | `g` | workflow chart (DAG image; needs graphviz — see [Setup](#setup)) |
 | `e` | **resource efficiency** — per-sample time/mem used vs allocated, with drill-down (see [Resource efficiency](#resource-efficiency)) |
@@ -889,10 +889,10 @@ A band at the top names the run currently on screen (its full path). If other Sm
 **For scripting**, call the engines `checkRun` drives from its UI directly:
 
 ```bash
-diagnose.sh <flag> --log smartSlurmLog --json   # one job's machine-readable record
-checkRunGrid --render  --log smartSlurmLog       # print the status grid and exit
-checkRunGrid --resolve b2 --log smartSlurmLog    # address -> job flag(s), one per line
-checkRunGrid b2 why    --log smartSlurmLog        # diagnose the job(s) at address b2
+diagnose.sh <flag> --log smartSbatchLog --json   # one job's machine-readable record
+checkRunGrid --render  --log smartSbatchLog       # print the status grid and exit
+checkRunGrid --resolve b2 --log smartSbatchLog    # address -> job flag(s), one per line
+checkRunGrid b2 why    --log smartSbatchLog        # diagnose the job(s) at address b2
 ```
 
 `checkRunGrid` is the render/resolve engine and [`diagnose.sh`](#diagnosesh-explain-one-job) the per-job analyzer; `checkRun` drives both from its keyboard UI.
@@ -931,7 +931,7 @@ The `--json` record carries these fields — consume it by name:
 
 ## Resource efficiency
 
-Every job writes one row to a per-run **`smartSlurmLog/efficiency.tsv`** (flag, sample, step, status, and the memory/time it was **allocated vs actually used**). Press **`e`** in `checkRun` to explore it as `htop`-style bars — so you can see where you over- or under-reserved and tighten future runs.
+Every job writes one row to a per-run **`smartSbatchLog/efficiency.tsv`** (flag, sample, step, status, and the memory/time it was **allocated vs actually used**). Press **`e`** in `checkRun` to explore it as `htop`-style bars — so you can see where you over- or under-reserved and tighten future runs.
 
 Bars are **percent-based** (fixed width, so absolute scale never distorts the picture); the `eff | used | alloc` columns follow each bar. **Time bars are cyan, memory bars magenta** (distinct and deliberately not green, so the time/mem colors never read as a red/green pass–fail scale; plain under `--no-color` or when piped). A row whose efficiency is at or below `effLowPct` (default **25%**, set in [`config.txt`](#configtxt)) turns its bar **red** — a waste alert for allocations that went mostly unused, worth trimming. For a sample, **time is summed across its steps** (step-time is additive) and **memory is the peak step** (steps run sequentially, so a sample never holds the sum at once).
 
@@ -985,10 +985,10 @@ heart (C)      (time) [||||||||||||||||||||||||......]   80%    8.0h   10.0h
 For scripting, the engine renders each view non-interactively:
 
 ```bash
-checkRunGrid --efficiency                      --log smartSlurmLog   # overview
-checkRunGrid --efficiency --eff-view sample --eff-select A --log smartSlurmLog
-checkRunGrid --efficiency --eff-view step   --eff-select 2 --log smartSlurmLog
-checkRunGrid --efficiency --eff-show time   --log smartSlurmLog      # one dimension
+checkRunGrid --efficiency                      --log smartSbatchLog   # overview
+checkRunGrid --efficiency --eff-view sample --eff-select A --log smartSbatchLog
+checkRunGrid --efficiency --eff-view step   --eff-select 2 --log smartSbatchLog
+checkRunGrid --efficiency --eff-show time   --log smartSbatchLog      # one dimension
 ```
 
 ## Rerunning a pipeline
@@ -1002,12 +1002,12 @@ Re-issue the **same** `runAsPipeline` command to rerun. The unchanged script reu
 | `step` → *N* | re-run from a chosen step onward (offers only steps that actually completed). |
 | `cancel` | do nothing. |
 
-For scripts/CI, set the choice non-interactively with the (ephemeral) `smartSlurmRerun` environment variable:
+For scripts/CI, set the choice non-interactively with the (ephemeral) `smartSbatchRerun` environment variable:
 
 ```bash
-smartSlurmRerun=failed        runAsPipeline --script "..." ...   # default
-smartSlurmRerun=all           runAsPipeline --script "..." ...
-smartSlurmRerun=fromStep:3    runAsPipeline --script "..." ...
+smartSbatchRerun=failed        runAsPipeline --script "..." ...   # default
+smartSbatchRerun=all           runAsPipeline --script "..." ...
+smartSbatchRerun=fromStep:3    runAsPipeline --script "..." ...
 ```
 
 Rerunning a step re-runs its downstream steps too (their dependency is satisfied by a fresh upstream run).
@@ -1092,7 +1092,7 @@ Yes. Any standard sbatch option works and is passed through.
 <details>
 <summary><b>How does ssbatch know a job already ran?</b></summary>
 
-On success it creates `<flag>.success` in `smartSlurmLogDir`. That file's presence is how reruns are detected.
+On success it creates `<flag>.success` in `smartSbatchLogDir`. That file's presence is how reruns are detected.
 </details>
 
 ---
@@ -1106,9 +1106,9 @@ Because `ssbatch` accepts standard sbatch syntax, you can point Snakemake, Nextf
 ```bash
 git clone https://github.com/ld32/SmartSbatch.git $HOME/SmartSbatch
 
-mkdir -p SmartSlurmTest && cd SmartSlurmTest
-source $HOME/SmartSlurm/bin/smartslurm.sh   # load the smartslurm command in this shell
-smartslurm activate                          # ssbatch on PATH (run 'bash smartSlurmSetup.sh' once to make it permanent — see Setup)
+mkdir -p SmartSbatchTest && cd SmartSbatchTest
+source $HOME/SmartSbatch/bin/smartsbatch.sh   # load the smartsbatch command in this shell
+smartsbatch activate                          # ssbatch on PATH (run 'bash smartSbatchSetup.sh' once to make it permanent — see Setup)
 
 cp $HOME/SmartSbatch/bin/Snakefile .
 cp $HOME/SmartSbatch/config/config.yaml .
@@ -1135,8 +1135,8 @@ mkdir -p SmartSbatchTest && cd SmartSbatchTest
 module load conda/miniforge3/24.11.3-0
 mamba create -n nextflowEnv -c bioconda -y nextflow
 
-source $HOME/SmartSlurm/bin/smartslurm.sh   # load the smartslurm command in this shell
-smartslurm activate                          # also aliases sbatch -> ssbatch, which Nextflow calls directly
+source $HOME/SmartSbatch/bin/smartsbatch.sh   # load the smartsbatch command in this shell
+smartsbatch activate                          # also aliases sbatch -> ssbatch, which Nextflow calls directly
 conda activate nextflowEnv
 
 cp $HOME/SmartSbatch/bin/nextflow.nf .
@@ -1149,7 +1149,7 @@ nextflow run nextflow.nf -profile slurm
 checkRun
 
 # When finished, restore the system sbatch:
-smartslurm deactivate
+smartsbatch deactivate
 ```
 
 ## Cromwell
@@ -1172,10 +1172,10 @@ AI calls go through a small setuid helper binary, `ai_call`, which holds the API
 ~/.SmartSbatch/bin/ai_call          # setuid (mode 4755), compiled from ai_call.c
 
 # Access is granted per user by the helper's owner:
-echo yourUserName >> ~/.SmartSbatch/allowed_users.txt
+echo yourUserName >> ~/.smartSlurm/allowed_users.txt
 ```
 
-`ai_call` is found automatically at `~/.SmartSbatch/bin/ai_call`, then next to the SmartSbatch scripts. Set `smartSlurmAiCall` in [`config.txt`](#configtxt) to point somewhere else.
+`ai_call` is found automatically at `~/.SmartSbatch/bin/ai_call`, then next to the SmartSbatch scripts. Set `smartSbatchAiCall` in [`config.txt`](#configtxt) to point somewhere else.
 
 If it is missing, or your username is not in `allowed_users.txt`, SmartSbatch says so once and carries on without AI.
 
@@ -1183,8 +1183,8 @@ If it is missing, or your username is not in `allowed_users.txt`, SmartSbatch sa
 
 | Where | When it runs | What you get |
 |---|---|---|
-| `cleanUp.sh` (every job) | automatically, when a job ends **not** COMPLETED (Canceled excluded) | Failure analysis at the top of the job email, also saved to `smartSlurmLog/ai.<jobid>.txt` |
-| `estimateResource.sh` | automatically, **only when a resource curve is rebuilt** and there are ≥ `smartSlurmAiMinRecords` records | Review of the fit: outliers, non-linearity, regime changes. Saved to `<recordDir>/stats/<program>.<ref>.aiReview.txt` and copied into the step's `.out` log |
+| `cleanUp.sh` (every job) | automatically, when a job ends **not** COMPLETED (Canceled excluded) | Failure analysis at the top of the job email, also saved to `smartSbatchLog/ai.<jobid>.txt` |
+| `estimateResource.sh` | automatically, **only when a resource curve is rebuilt** and there are ≥ `smartSbatchAiMinRecords` records | Review of the fit: outliers, non-linearity, regime changes. Saved to `<recordDir>/stats/<program>.<ref>.aiReview.txt` and copied into the step's `.out` log |
 | [`checkRun`](#checkrun-monitor-and-debug) | on demand: `1a`, `2a`, … or `?` | Per-job analysis (tailored to whether the job is done, failed, running or pending), or a summary of the whole run |
 | [`reviewJobRecords.py`](#reviewing-and-cleaning-job-records) | on demand: `?` | Outliers and trends in a program's records, ending with a `SUGGESTED DELETIONS:` line |
 
@@ -1198,18 +1198,18 @@ If it is missing, or your username is not in `allowed_users.txt`, SmartSbatch sa
 All in [`config.txt`](#configtxt) (your `~/.SmartSbatch/config/config.txt` copy wins):
 
 ```bash
-export smartSlurmAiEnabled=yes        # no = turn AI off completely
-export smartSlurmAiCall=              # empty = auto-detect ai_call
-export smartSlurmAiTimeout=90         # s, default cap for any AI call
+export smartSbatchAiEnabled=yes        # no = turn AI off completely
+export smartSbatchAiCall=              # empty = auto-detect ai_call
+export smartSbatchAiTimeout=90         # s, default cap for any AI call
 
-export smartSlurmAiMinRecords=10      # records needed before a fitted curve is reviewed
-export smartSlurmAiReviewTimeout=30   # s, curve review — short, a submission is waiting
+export smartSbatchAiMinRecords=10      # records needed before a fitted curve is reviewed
+export smartSbatchAiReviewTimeout=30   # s, curve review — short, a submission is waiting
 
-export smartSlurmAiRecordReviewTimeout=180  # s, reviewJobRecords.py — you asked for it, so it may take longer
+export smartSbatchAiRecordReviewTimeout=180  # s, reviewJobRecords.py — you asked for it, so it may take longer
 ```
 
 > [!TIP]
-> Because `config.txt` is *sourced* (its `export`s override your environment), turn AI off by editing the config file — not with `smartSlurmAiEnabled=no ssbatch ...` on the command line.
+> Because `config.txt` is *sourced* (its `export`s override your environment), turn AI off by editing the config file — not with `smartSbatchAiEnabled=no ssbatch ...` on the command line.
 
 Every timeout exists so AI can never delay a job or a submission: when it expires, the call is abandoned and the script continues.
 
@@ -1261,7 +1261,7 @@ How it works:
 
 # sbatchAndTop
 
-Submit a job with `ssbatch` and immediately run `scontrol top` on it (with SmartSlurm active — see [Setup](#setup)):
+Submit a job with `ssbatch` and immediately run `scontrol top` on it (with SmartSbatch active — see [Setup](#setup)):
 
 ```bash
 sbatchAndTop -p short -c 1 -t 2:0:0 --mem 4G --wrap "my_application para1 para2"

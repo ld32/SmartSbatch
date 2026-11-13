@@ -12,36 +12,37 @@
 # The AI token never appears here: it lives inside the setuid ai_call helper.
 
 # Path to the setuid AI helper binary. Config or environment can override it.
-if [ -z "$smartSlurmAiCall" ]; then
+if [ -z "$smartSbatchAiCall" ]; then
     for _aiTry in "$HOME/.SmartSbatch/bin/ai_call" \
                   "$(dirname "$0")/ai_call" \
-                  "/home/ld32/.SmartSbatch/bin/ai_call"; do
-        [ -x "$_aiTry" ] && { smartSlurmAiCall="$_aiTry"; break; }
+                  "/home/ld32/.SmartSbatch/bin/ai_call" \
+                  "/home/ld32/.smartSlurm/bin/ai_call"; do
+        [ -x "$_aiTry" ] && { smartSbatchAiCall="$_aiTry"; break; }
     done
     unset _aiTry
 fi
-_AI_CALL="$smartSlurmAiCall"
+_AI_CALL="$smartSbatchAiCall"
 
 # Seconds to wait for an answer before giving up, so AI never hangs a job.
-[ -z "$smartSlurmAiTimeout" ] && smartSlurmAiTimeout=90
+[ -z "$smartSbatchAiTimeout" ] && smartSbatchAiTimeout=90
 
 # Largest prompt ai_call accepts is 64K; stay well under it.
-[ -z "$smartSlurmAiMaxPrompt" ] && smartSlurmAiMaxPrompt=48000
+[ -z "$smartSbatchAiMaxPrompt" ] && smartSbatchAiMaxPrompt=48000
 
 # aiEnabled: true only when AI is turned on and the helper is really runnable.
 aiEnabled() {
-    [ "$smartSlurmAiEnabled" = "no" ] && return 1
+    [ "$smartSbatchAiEnabled" = "no" ] && return 1
     [ -n "$_AI_CALL" ] && [ -x "$_AI_CALL" ]
 }
 
 # aiWhyNot: one line explaining why AI is unavailable, for logs and menus.
 aiWhyNot() {
-    if [ "$smartSlurmAiEnabled" = "no" ]; then
-        echo "AI is disabled by config (smartSlurmAiEnabled=no)."
+    if [ "$smartSbatchAiEnabled" = "no" ]; then
+        echo "AI is disabled by config (smartSbatchAiEnabled=no)."
     elif [ -z "$_AI_CALL" ] || [ ! -x "$_AI_CALL" ]; then
-        echo "AI helper ai_call not found or not executable. Ask your SmartSbatch admin to install it and add '$USER' to the owner's ~/.SmartSbatch/allowed_users.txt"
+        echo "AI helper ai_call not found or not executable. Ask your SmartSbatch admin to install it and add '$USER' to the owner's ~/.smartSlurm/allowed_users.txt"
     else
-        echo "AI call failed. If you see 'Access denied', ask your SmartSbatch admin to add '$USER' to the owner's ~/.SmartSbatch/allowed_users.txt"
+        echo "AI call failed. If you see 'Access denied', ask your SmartSbatch admin to add '$USER' to the owner's ~/.smartSlurm/allowed_users.txt"
     fi
 }
 
@@ -55,7 +56,7 @@ aiAsk() {
     _aiOut=`mktemp 2>/dev/null` || { rm -f "$_aiIn"; return 1; }
     _aiErr=`mktemp 2>/dev/null` || { rm -f "$_aiIn" "$_aiOut"; return 1; }
 
-    head -c "$smartSlurmAiMaxPrompt" > "$_aiIn"
+    head -c "$smartSbatchAiMaxPrompt" > "$_aiIn"
 
     if [ ! -s "$_aiIn" ]; then
         rm -f "$_aiIn" "$_aiOut" "$_aiErr"
@@ -63,7 +64,7 @@ aiAsk() {
     fi
 
     if command -v timeout >/dev/null 2>&1; then
-        timeout "$smartSlurmAiTimeout" "$_AI_CALL" < "$_aiIn" > "$_aiOut" 2> "$_aiErr"
+        timeout "$smartSbatchAiTimeout" "$_AI_CALL" < "$_aiIn" > "$_aiOut" 2> "$_aiErr"
     else
         "$_AI_CALL" < "$_aiIn" > "$_aiOut" 2> "$_aiErr"
     fi

@@ -313,7 +313,7 @@ def ai_review_records(all_rows, program_name, deleted=None):
     # This is an interactive review the user explicitly asked for, and reasoning
     # over a full record set takes longer than the ordinary AI timeout allows.
     try:
-        reviewTimeout = int(aiHelper._setting("smartSlurmAiRecordReviewTimeout", "180"))
+        reviewTimeout = int(aiHelper._setting("smartSbatchAiRecordReviewTimeout", "180"))
     except ValueError:
         reviewTimeout = 180
 

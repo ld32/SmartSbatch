@@ -2,7 +2,7 @@
 
 #set -x
 
-# checkRun -- interactive controller for SmartSlurm / runAsPipeline runs.
+# checkRun -- interactive controller for SmartSbatch / runAsPipeline runs.
 #
 # Users launch it as `checkRun` (no arguments). All navigation happens by
 # keyboard INSIDE the tool. The 2-D grid is the persistent home screen and is
@@ -24,10 +24,10 @@
 
 showPending=""
 
-submttingLog=.smartSlurm.log
+submttingLog=.smartSbatch.log
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    echo "checkRun: interactive helper to inspect/debug SmartSlurm runs."
+    echo "checkRun: interactive helper to inspect/debug SmartSbatch runs."
     echo "Usage: checkRun          (no arguments; navigate with the keyboard)"
     exit 0
 fi
@@ -38,9 +38,9 @@ else
     source $(dirname $0)/../config/config.txt || { echoerr Config list file not found: config.txt; exit 1; }
 fi
 
-#export smartSlurmLogDir=smartSlurmLog #log
+#export smartSbatchLogDir=smartSbatchLog #log
 
-[ -f .smartSlurm.log ] || { echo .smartSlurm.log is not found. Please go to the folder from which you ran ssbatch; exit; }
+[ -f .smartSbatch.log ] || { echo .smartSbatch.log is not found. Please go to the folder from which you ran ssbatch; exit; }
 
 # Optional AI support (the token stays inside the setuid ai_call helper).
 # If the library or the helper is missing, checkRun works exactly as before.
@@ -54,7 +54,7 @@ command -v aiEnabled >/dev/null 2>&1 || { aiEnabled() { return 1; }; aiWhyNot() 
 # Engine locations (siblings in the same bin/). checkRun never asks the user to
 # invoke these; it calls them itself.
 _bindir=$(dirname $0)
-_deflog="${smartSlurmLogDir:-smartSlurmLog}"
+_deflog="${smartSbatchLogDir:-smartSbatchLog}"
 
 # scratch file for capturing engine stderr on a failed resolve
 _errf=$(mktemp 2>/dev/null || echo /tmp/checkRun.$$.err)
@@ -167,21 +167,21 @@ ai_explain() {
     _clear
     echo -e "${BLUE}Asking AI to analyze $flag...${NC}"
     {
-        echo "I am running a Slurm pipeline with SmartSlurm. A job has failed. Below is an automated diagnosis, then the job's own tool output. Explain what went wrong and how to fix it; be specific and concise."
+        echo "I am running a Slurm pipeline with SmartSbatch. A job has failed. Below is an automated diagnosis, then the job's own tool output. Explain what went wrong and how to fix it; be specific and concise."
         echo ""
         echo "=== Job: $flag ==="
         echo ""
-        echo "--- SmartSlurm automated diagnosis ---"
+        echo "--- SmartSbatch automated diagnosis ---"
         "$_bindir/diagnose.sh" "$flag" --log "$folder" 2>/dev/null || echo "(diagnosis unavailable)"
         echo ""
         echo "--- Tool output ---"
         # M1: the tool's own output sits between these sentinels; fall back to a
         # plain tail for legacy logs that predate them.
-        region=$(awk '/SmartSlurm step output:/{f=1;next} /SmartSlurm job report:/{f=0} f' "$logFile")
+        region=$(awk '/SmartSbatch step output:/{f=1;next} /SmartSbatch job report:/{f=0} f' "$logFile")
         if [ -n "$region" ]; then echo "$region" | tail -n 150; else tail -n 150 "$logFile"; fi
     } | aiAsk || {
         echo -e "${RED}AI call failed.${NC}"
-        echo "If you see 'Access denied', ask your SmartSlurm admin to add '$USER' to the allowed user list."
+        echo "If you see 'Access denied', ask your SmartSbatch admin to add '$USER' to the allowed user list."
     }
     echo; pause
 }
@@ -232,7 +232,7 @@ workflow_dag() {
     fi
     if [ ! -f "$folder/dag.svg" ]; then
         module load conda/miniforge3/24.11.3-0 2>/dev/null
-        conda activate smartSlurmEnv 2>/dev/null
+        conda activate smartSbatchEnv 2>/dev/null
         workflowPlot.py "$folder" && dot -Tsvg "$folder/jobs.dot" -o "$folder/dag.svg"
     fi
     if [ -f "$folder/dag.svg" ]; then display "$folder/dag.svg"
@@ -435,7 +435,7 @@ home_loop() {
                 pln "   ${BOLD}d 3${NC}           diagnose        ${GREY}(why it failed / what to do)${NC}"
                 aiEnabled && pln "   ${BOLD}a 3${NC}           ask AI about the job"
                 pln "   ${BOLD}r 3${NC}           view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
-                pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
+                pln "   ${BOLD}o${NC}             browse other SmartSbatch logs in this directory"
                 pln "${BOLD}l${NC} list view · ${BOLD}e${NC} efficiency · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
             fi
         else
@@ -449,7 +449,7 @@ home_loop() {
                 pln "   ${BOLD}r b2${NC}          view raw files  ${GREY}(.out / .err / .sh ...)${NC}"
                 pln "   ${BOLD}s${NC}             list full sample names (row → name table)"
                 pln "   ${BOLD}e${NC}             resource efficiency bars (time/mem used vs allocated, per sample)"
-                pln "   ${BOLD}o${NC}             browse other SmartSlurm logs in this directory"
+                pln "   ${BOLD}o${NC}             browse other SmartSbatch logs in this directory"
                 pln "${BOLD}l${NC} list view · ${BOLD}g${NC} workflow · ${BOLD}p${NC} pending · ${BOLD}Enter${NC} refresh · ${BOLD}q${NC}/${BOLD}qq${NC} quit"
             fi
         fi
@@ -518,9 +518,9 @@ home_loop() {
 # loadData -- enumerate log folders/files and build the picker list (verbatim).
 # ===========================================================================
 function loadData() {
-    logFolders=`ls -d -t ${smartSlurmLogDir:-smartSlurmLog} ${smartSlurmLogDir:-smartSlurmLog}.* 2>/dev/null; ls -d -t $submttingLog* 2>/dev/null`
+    logFolders=`ls -d -t ${smartSbatchLogDir:-smartSbatchLog} ${smartSbatchLogDir:-smartSbatchLog}.* 2>/dev/null; ls -d -t $submttingLog* 2>/dev/null`
 
-    [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSlurmLogDir. Maybe you are not in the project folder? && usage
+    [ -z "$logFolders" ] && echo Log folder name does not exist: $smartSbatchLogDir. Maybe you are not in the project folder? && usage
 
     IFS=$'\n'
 
@@ -605,12 +605,12 @@ _rule() {
 
 # HOME_FOLDER <- the run directory to open at launch. Prefer the resolved default
 # log dir checked DIRECTLY (robust even if the enumeration glob or an unset
-# smartSlurmLogDir missed it), then fall back to the most-recent ready dir among
+# smartSbatchLogDir missed it), then fall back to the most-recent ready dir among
 # the enumerated runs. Returns 1 only if nothing ready exists anywhere.
 find_home_folder() {
     HOME_FOLDER=""
     local d i
-    d="${smartSlurmLogDir:-smartSlurmLog}"
+    d="${smartSbatchLogDir:-smartSbatchLog}"
     [ -d "$d" ] && _dir_ready "$d" && { HOME_FOLDER="$d"; return 0; }
     for i in $logFolders; do
         [ -d "$i" ] && _dir_ready "$i" && { HOME_FOLDER="$i"; return 0; }
@@ -624,7 +624,7 @@ _refresh_others() { [ "$count" -gt 2 ] && _haveOthers=y || _haveOthers=""; }
 # run_switcher: the explicit "other runs / logs" chooser (reached with `o`). Sets
 # SWITCH_SEL to the chosen path (a run dir to re-root to, or the raw submission
 # file to page) and returns 0; returns 1 on cancel. This is the ONLY place the
-# older dated runs and the raw .smartSlurm.log are reachable -- never a default.
+# older dated runs and the raw .smartSbatch.log are reachable -- never a default.
 run_switcher() {
     SWITCH_SEL=""
     loadData; _refresh_others
@@ -684,7 +684,7 @@ wait_for_run() {
     while true; do
         loadData; _refresh_others
         find_home_folder && return 0                       # ready now -> open its grid
-        d="${smartSlurmLogDir:-smartSlurmLog}"
+        d="${smartSbatchLogDir:-smartSbatchLog}"
         [ -d "$d" ] && _is_dryrun_dir "$d" && dry_run_screen "$d"   # a stub appeared -> browse & exit
         [ "$elapsed" -ge "$maxwait" ] && break             # give up (see message below)
         secs="$interval"
@@ -736,7 +736,7 @@ loadData; _refresh_others
 if find_home_folder; then
     home_loop "$HOME_FOLDER"                 # a ready run exists -> grid home
 else
-    _d="${smartSlurmLogDir:-smartSlurmLog}"
+    _d="${smartSbatchLogDir:-smartSbatchLog}"
     if [ -d "$_d" ] && _is_dryrun_dir "$_d"; then
         dry_run_screen "$_d"                 # dry-run stub -> browse scripts & exit
     else

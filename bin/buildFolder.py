@@ -26,7 +26,7 @@ for i, (group, sample, library, lane, path, read1, read2, empty) in enumerate(sh
         print(f"Row {i}: One of the column values contains a space.")
         exit()
 
-    group = "smartSlurmInputs/" + group 
+    group = "smartSbatchInputs/" + group 
     if os.path.exists(group):
         print("Folder exists. please remove or rename it: " + group)
         exit()
@@ -41,7 +41,7 @@ for i, (group, sample, library, lane, path, read1, read2, empty) in enumerate(sh
 
 for i, (group, sample, library, lane, path, read1, read2, empty) in enumerate(sh.iter_rows(min_row=2, values_only=True), start=2):
      
-    group = 'smartSlurmInputs/' + str(group)    
+    group = 'smartSbatchInputs/' + str(group)    
     read1 = os.path.expanduser(os.path.join(path, read1))
     
     if not os.path.exists(group + "/" + sample + "/"):

@@ -43,12 +43,12 @@ if [ -f .command.sh ] && [ -f .command.run ]; then
 # pipeline mode (parent is a slurmPipeLine script)
 elif [ -z "$runningSingleJob" ]; then
     echoerr() { echo "$@" >&2; }
-    echoerr1() { echo "$@" >> .smartSlurm.log; }
+    echoerr1() { echo "$@" >> .smartSbatch.log; }
 
 # single job
 else 
-    echoerr() { echo "$@" | tee -a .smartSlurm.log 1>&2; }
-    echoerr1() { echo "$@" >> .smartSlurm.log; }
+    echoerr() { echo "$@" | tee -a .smartSbatch.log 1>&2; }
+    echoerr1() { echo "$@" >> .smartSbatch.log; }
 fi 
 
 output="Running: `realpath $0` $@"
@@ -83,7 +83,7 @@ if [ -z "$smartSbatchJobRecordDir" ]; then
     fi
 fi
 
-[[ "$smartSlurmLogDir" == /* ]] || export smartSlurmLogDir=$PWD/$smartSlurmLogDir
+[[ "$smartSbatchLogDir" == /* ]] || export smartSbatchLogDir=$PWD/$smartSbatchLogDir
 
 mkdir -p $smartSbatchJobRecordDir/stats
 
@@ -114,9 +114,9 @@ export alwaysRequeueIfFail=""
 
 # nextflow pipeline, log dir is on the top folder
 # if [ -f .command.sh ] && [ -f .command.run ]; then 
-#     export smartSlurmLogDir="../../../$smartSlurmLogDir"
+#     export smartSbatchLogDir="../../../$smartSbatchLogDir"
 # fi 
-mkdir -p $smartSlurmLogDir/
+mkdir -p $smartSbatchLogDir/
 
 #slurmScriptPosition=$(($(($#))-2))
 
@@ -195,7 +195,7 @@ fi
 #echoerr1
 
 if [ -z "$wrapCMD" ] && [ -z "$slurmScript" ]; then 
-    tm=$smartSlurmLogDir/cmd.pipedin.`mktemp XXXXXXXX --dry-run`.sh
+    tm=$smartSbatchLogDir/cmd.pipedin.`mktemp XXXXXXXX --dry-run`.sh
     # check if there is commands piped in
     while IFS= read -r line; do
         #echo "Received: $line"
@@ -334,8 +334,29 @@ mem="${mem^^}"; mem1="${mem1^^}"
 [ -z "$err" ] || err=`realpath $err`
 #todo: err is ignored. will work on it later
 
-# todo: figure out how to find program name and input automatically
-if [ -z "$program" ]; then 
+# Let AI fill in program/reference/inputs the user did not give (-P/-R/-I).
+# Results are cached in $smartSbatchJobRecordDir/aiCache, so repeated jobs of
+# the same shape make no AI call. Explicit flags always win.
+aiDetectMsg=""
+if [ "$smartSbatchAiDetect" != "no" ] && [ "$smartSbatchAiEnabled" != "no" ] && { [ -z "$program" ] || [ -z "$ref" ] || [ -z "$inputs" ]; }; then
+    if [ ! -z "$wrapCMD" ]; then
+        aiOut=`python3 $(dirname $0)/aiDetectJob.py "$smartSbatchJobRecordDir" "$core" wrap "$wrapCMD" 2>/dev/null`
+    elif [ ! -z "$slurmScript" ]; then
+        aiOut=`python3 $(dirname $0)/aiDetectJob.py "$smartSbatchJobRecordDir" "$core" script "$slurmScript" $slurmScriptParas 2>/dev/null`
+    fi
+    IFS=$'\t' read -r aiProgram aiRef aiInputs aiSource aiKey <<< "$aiOut"
+    if [[ "$aiSource" == cache || "$aiSource" == ai ]]; then
+        [ -z "$program" ] && [ "$aiProgram" != "-" ] && program=$aiProgram
+        [ -z "$ref" ] && [ "$aiRef" != "-" ] && ref=$aiRef
+        [ -z "$inputs" ] && [ "$aiInputs" != "-" ] && inputs=$aiInputs
+        [ "$aiSource" == cache ] && aiDetectMsg="#AI detect (cache $aiKey, no AI call):" || aiDetectMsg="#AI detect (new AI query, saved as $aiKey):"
+        aiDetectMsg="$aiDetectMsg program=$program ref=${ref:-none} inputs=${inputs:-none}\n#Wrong? Edit or delete $smartSbatchJobRecordDir/aiCache/$aiKey.json, or pass -P/-R/-I."
+        echoerr ${aiDetectMsg//\\n/ }
+    fi
+fi
+
+# Fallback when the user and AI did not name the program
+if [ -z "$program" ]; then
     if [ ! -z "$wrapCMD" ]; then
         arr=($wrapCMD)
         # need remove the parameters, to get unique name for job types
@@ -376,14 +397,14 @@ flag=${flag// /}
 [ -z "$name" ] && name=$flag
 
 
-mkdir -p $smartSlurmLogDir/
-job=$smartSlurmLogDir/$flag.sh
-succFlag=$smartSlurmLogDir/$flag.success
-failFlag=$smartSlurmLogDir/$flag.failed
-#startFlag=$smartSlurmLogDir/$flag.start
-killFlag=$smartSlurmLogDir/$flag.user.killed
-outFlag=$smartSlurmLogDir/$flag.out
-errFlag=$smartSlurmLogDir/$flag.err
+mkdir -p $smartSbatchLogDir/
+job=$smartSbatchLogDir/$flag.sh
+succFlag=$smartSbatchLogDir/$flag.success
+failFlag=$smartSbatchLogDir/$flag.failed
+#startFlag=$smartSbatchLogDir/$flag.start
+killFlag=$smartSbatchLogDir/$flag.user.killed
+outFlag=$smartSbatchLogDir/$flag.out
+errFlag=$smartSbatchLogDir/$flag.err
 
 [ -z "$ref" ] && ref=none
 [ -z "$pipeline" ] && pipeline=unknown
@@ -423,6 +444,7 @@ else
 fi
 
 resAjust="#Depend on: $depsID\n"
+[ -z "$aiDetectMsg" ] || resAjust="$resAjust$aiDetectMsg\n"
 
 # check job done before or not
 #if [[ "$dryrun" == "run" ]]; then
@@ -433,11 +455,11 @@ resAjust="#Depend on: $depsID\n"
         stepID=${flag%%.*}
 
         # Already-successful job. First honor any scope marker a prior prompt (or
-        # the smartSlurmRerun override) already materialized this run.
-        if [ -z "$runningSingleJob" ] && ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then
+        # the smartSbatchRerun override) already materialized this run.
+        if [ -z "$runningSingleJob" ] && ([ -f $smartSbatchLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSbatchLogDir/skipAllSuccessJobs$stepID.txt ]) && [ -z "$deps" ]; then
             echo skipThisJob
             exit
-        elif [ -z "$runningSingleJob" ] && ([ -f $smartSlurmLogDir/reRunAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/reRunAllSuccessJobs$stepID.txt ]); then
+        elif [ -z "$runningSingleJob" ] && ([ -f $smartSbatchLogDir/reRunAllSuccessJobs.txt ] || [ -f $smartSbatchLogDir/reRunAllSuccessJobs$stepID.txt ]); then
             : # a scope marker says re-run this step -> fall through, no prompt
 
         elif [ ! -z "$runningSingleJob" ]; then
@@ -456,12 +478,12 @@ resAjust="#Depend on: $depsID\n"
             # only offers steps that actually completed, so you cannot target a
             # step the previous run never reached.
             stepName=${flag#*.}; stepName=${stepName#*.}; stepName=${stepName%%.*}
-            reachable=`ls $smartSlurmLogDir/*.success 2>/dev/null | sed 's#.*/##' | cut -d. -f1 | sort -un | tr '\n' ' '`
+            reachable=`ls $smartSbatchLogDir/*.success 2>/dev/null | sed 's#.*/##' | cut -d. -f1 | sort -un | tr '\n' ' '`
             reachable=`echo $reachable`   # trim
 
             # non-interactive override (scripts/CI/tests): all | failed | fromStep:N
-            if [ -n "$smartSlurmRerun" ]; then
-                x="$smartSlurmRerun"
+            if [ -n "$smartSbatchRerun" ]; then
+                x="$smartSbatchRerun"
             else
                 echoerr -e "\n!!! Some jobs already completed. What would you like to re-run?\n"
                 echoerr -e "all      re-run ALL successful jobs (redo completed work).\n"
@@ -475,9 +497,9 @@ resAjust="#Depend on: $depsID\n"
 
             case "$x" in
                 all|yall)
-                    touch $smartSlurmLogDir/reRunAllSuccessJobs.txt ;;
+                    touch $smartSbatchLogDir/reRunAllSuccessJobs.txt ;;
                 failed|nall)
-                    touch $smartSlurmLogDir/skipAllSuccessJobs.txt ;;
+                    touch $smartSbatchLogDir/skipAllSuccessJobs.txt ;;
                 cancel|q|quit)
                     echoerr "Cancelled -- no jobs submitted."; echo skipThisJob; exit ;;
                 step|ystep|from|fromStep|fromStep:*|from:*)
@@ -486,7 +508,7 @@ resAjust="#Depend on: $depsID\n"
                     if [ -z "$fromStep" ]; then
                         echoerr "Completed steps you can re-run from:"
                         for s in $reachable; do
-                            nm=`awk -v s=$s 'NR>1 && $3 ~ ("^"s"\\.") {split($3,f,"."); print f[3]; exit}' $smartSlurmLogDir/allJobs.txt 2>/dev/null`
+                            nm=`awk -v s=$s 'NR>1 && $3 ~ ("^"s"\\.") {split($3,f,"."); print f[3]; exit}' $smartSbatchLogDir/allJobs.txt 2>/dev/null`
                             echoerr "    $s  $nm"
                         done
                         read -p "Re-run from which step? " fromStep </dev/tty
@@ -499,16 +521,16 @@ resAjust="#Depend on: $depsID\n"
                     # keep steps below the chosen one, re-run it and everything above
                     # (downstream then propagates through the live dependencies).
                     for s in $reachable; do
-                        if [ "$s" -ge "$fromStep" ]; then touch $smartSlurmLogDir/reRunAllSuccessJobs$s.txt
-                        else touch $smartSlurmLogDir/skipAllSuccessJobs$s.txt; fi
+                        if [ "$s" -ge "$fromStep" ]; then touch $smartSbatchLogDir/reRunAllSuccessJobs$s.txt
+                        else touch $smartSbatchLogDir/skipAllSuccessJobs$s.txt; fi
                     done ;;
                 *)
                     echoerr "Unrecognized choice; keeping successful jobs (re-running failures only)."
-                    touch $smartSlurmLogDir/skipAllSuccessJobs.txt ;;
+                    touch $smartSbatchLogDir/skipAllSuccessJobs.txt ;;
             esac
 
             # apply the freshly-set scope to THIS job
-            if ([ -f $smartSlurmLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSlurmLogDir/skipAllSuccessJobs$stepID.txt ]); then
+            if ([ -f $smartSbatchLogDir/skipAllSuccessJobs.txt ] || [ -f $smartSbatchLogDir/skipAllSuccessJobs$stepID.txt ]); then
                 echo skipThisJob
                 exit
             fi
@@ -516,10 +538,10 @@ resAjust="#Depend on: $depsID\n"
         fi
     fi
 
-    if [ -f $smartSlurmLogDir/keepRunningJobs.txt ]; then
+    if [ -f $smartSbatchLogDir/keepRunningJobs.txt ]; then
         #echoerr $flag
         # check the third column for the job name, then find the the job id in column 1
-        out=`cat $smartSlurmLogDir/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
+        out=`cat $smartSbatchLogDir/allJobs.txt | awk '{if ($3 ~ /'"$flag/"') print $1, $2;}' | tail -n 1`
         id=${out%% *}; de=${out##* }
 
         # this job was submitted earlier
@@ -527,16 +549,16 @@ resAjust="#Depend on: $depsID\n"
 
             # this job still running or pending
             # todo: need troubleshoot this part. If dependency condition changed, need resubmit the job
-            if grep ^$id $smartSlurmLogDir/keepRunningJobs.txt 1>/dev/null; then
+            if grep ^$id $smartSbatchLogDir/keepRunningJobs.txt 1>/dev/null; then
 
                 # check if upsteam job is resubmitted
                 upstreamResubmitted=""
                 if [[ $de != null ]]; then
                     if [[ $de == ${de/:/} ]]; then
-                        [ -f $smartSlurmLogDir/${de/:/}.resubmitted ] && upstreamResubmitted=y
+                        [ -f $smartSbatchLogDir/${de/:/}.resubmitted ] && upstreamResubmitted=y
                     else
                         for t in ${de//:/ }; do
-                            [ -f $smartSlurmLogDir/$t.resubmitted ] && upstreamResubmitted=y
+                            [ -f $smartSbatchLogDir/$t.resubmitted ] && upstreamResubmitted=y
                         done
                     fi
                 fi
@@ -559,20 +581,20 @@ resAjust="#Depend on: $depsID\n"
 
                 scontrol requeue $id
 
-                touch $smartSlurmLogDir/$id.resubmitted
+                touch $smartSbatchLogDir/$id.resubmitted
 
                 [ ! -z "$depsR" ] && scontrol update job=$id $depsR && scontrol hold $id 
-                echo "Resubmit#$id-#$de-#$flag" >> $smartSlurmLogDir/allJobs.txt
+                echo "Resubmit#$id-#$de-#$flag" >> $smartSbatchLogDir/allJobs.txt
                 echo $id
-                #rm $smartSlurmLogDir/$flag.success 2>/dev/null
-                rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
+                #rm $smartSbatchLogDir/$flag.success 2>/dev/null
+                rm -r $smartSbatchLogDir/$flag $smartSbatchLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
                 exit
             fi
         fi
         #set +x
     fi
     #ls $flagDir/$flag.* 1>&2
-    rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
+    rm -r $smartSbatchLogDir/$flag $smartSbatchLogDir/$flag.* 2>/dev/null || : # in case user has set -e and file not exist,  we will not exit
 #fi
 
 # original mem and time
@@ -584,20 +606,20 @@ echoerr1
 echoerr1 Check if there input file list and this job does not depend on other jobs
 
 # has checkpoint ready to resume from
-if [ -z "$deps" ] && [[ "$program" == *.Checkpoint ]] && ls $smartSlurmLogDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $smartSlurmLogDir/$flag.adjust ]; then
-    IFS=' ' read -r inputSize mem min extraMem  <<< `cat $smartSlurmLogDir/$flag.adjust`
+if [ -z "$deps" ] && [[ "$program" == *.Checkpoint ]] && ls $smartSbatchLogDir/$flag/ckpt_*.dmtcp >/dev/null 2>&1 && [ -f $smartSbatchLogDir/$flag.adjust ]; then
+    IFS=' ' read -r inputSize mem min extraMem  <<< `cat $smartSbatchLogDir/$flag.adjust`
     #mem=`echo $tText | cut -d' ' -f1`
     #min=`echo $tText | cut -d' ' -f2`
     #extraMem=`echo $tText | cut -d' ' -f3`
-    echo Got mem/time from $smartSlurmLogDir/$flag.adjust: >> $outFlag
+    echo Got mem/time from $smartSbatchLogDir/$flag.adjust: >> $outFlag
     #echo $tText >> $outFlagƒ
 else
-    rm -r $smartSlurmLogDir/$flag $smartSlurmLogDir/$flag.* 2>/dev/null || :
+    rm -r $smartSbatchLogDir/$flag $smartSbatchLogDir/$flag.* 2>/dev/null || :
 
     if [ -f .command.sh ] && [ -f .command.run ]; then 
         IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min "$adjust" "$pipeline" 2>> ../../../.nextflow.log`
     else
-        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min "$adjust" "$pipeline" 2>> .smartSlurm.log`
+        IFS=' ' read -r inputSize mem min extraMem  <<< `estimateResource.sh $program ${ref//\//-} "$inputs" $flag $mem $min "$adjust" "$pipeline" 2>> .smartSbatch.log`
     fi     
 fi
 
@@ -652,17 +674,17 @@ else
 
     # has --wrap
     if [ -z "$slurmScript" ]; then
-        echo -e "#!/bin/bash\necho\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
+        echo -e "#!/bin/bash\necho\necho '========== SmartSbatch setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
 
         # testing without trap
         #echo -e "#!/bin/bash\ndate\n" > $job
 
         echo -e "unset SLURM_CPU_BIND" >> $job
 
-        # M1: sentinel marking the boundary between SmartSlurm setup and the
+        # M1: sentinel marking the boundary between SmartSbatch setup and the
         # step's own (tool) output. Everything until the "job report" sentinel
         # is the tool's stdout+stderr, left untouched.
-        echo -e "echo\necho '========== SmartSlurm step output: $flag =========='\necho" >> $job
+        echo -e "echo\necho '========== SmartSbatch step output: $flag =========='\necho" >> $job
 
         #echo "touch $startFlag" >> $job
         [[ "$wrapCMD" == *" " ]] && wrapCMD=${wrapCMD% *}; wrapCMD=${wrapCMD%;} # remove ending space and ; from command
@@ -680,9 +702,9 @@ else
             echo -e "for i in \`seq 10000\`; do echo Program running time: \${i}0 s; sleep 10; done &\nsh -e -o pipefail  -c \"$wrapCMD; \" && touch $succFlag" > ${job%.sh}.cmd
             ##echo -e "x=\"\$wrapCMD\" >> ${job%.sh}.cmd
             ##echo -e "ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \"$flag\"" >> ${job%.sh}.cmd
-            #echo -e "ps -fu $USER | grep \"$smartSlurmLogDir/$flag.cmd\"" >> ${job%.sh}.cmd
+            #echo -e "ps -fu $USER | grep \"$smartSbatchLogDir/$flag.cmd\"" >> ${job%.sh}.cmd
 
-            #echo -e "pss=\`ps -fu $USER | grep \"$smartSlurmLogDir/$flag.cmd\"\`" >> ${job%.sh}.cmd
+            #echo -e "pss=\`ps -fu $USER | grep \"$smartSbatchLogDir/$flag.cmd\"\`" >> ${job%.sh}.cmd
             ##echo -e "pid=\`ps -fu $USER | grep -v awk | grep -v srun | grep -v grep | grep \" $flag \" | tail -n 2 | head -n 1 | tr -s ' ' | cut -d' ' -f2\`" >> ${job%.sh}.cmd
 
             #echo -e "pid=\`echo -e \"\$pss\" | head -n 4 | tail -n 1 | tr -s ' ' | cut -d' ' -f2\`" >> ${job%.sh}.cmd
@@ -713,7 +735,7 @@ else
 
                 # !!! pipeline-mode jobs will land here !!!
                 echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh || : ; }" >> $job
-                # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSlurmLogDir && touch $succFlag " >> $job
+                # echo "srun -n 1 $slurmAcc sh -e -o pipefail -c '$wrapCMD; ' && adjustDownStreamJobs.sh $smartSbatchLogDir && touch $succFlag " >> $job
             fi 
         fi
 
@@ -722,15 +744,15 @@ else
         echo -e "#!/bin/bash" > $job
 
         grep "^#SBATCH" $slurmScript | grep -v mem-per-cpu >> $job || true >> $job
-        echo -e "echo\necho '========== SmartSlurm setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
+        echo -e "echo\necho '========== SmartSbatch setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
 
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job
 
-        # M1: boundary between SmartSlurm setup and the step's own (tool) output.
-        echo -e "echo\necho '========== SmartSlurm step output: $flag =========='\necho" >> $job
+        # M1: boundary between SmartSbatch setup and the step's own (tool) output.
+        echo -e "echo\necho '========== SmartSbatch step output: $flag =========='\necho" >> $job
         if [[ "$program" == *.Checkpoint ]]; then
-            echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir; \"" >> $job
+            echo "srun -n 1 $slurmAcc sh -e -c \"checkpoint.sh \\\"sh $slurmScript $slurmScriptParas && touch $succFlag\\\" $flag $mem $min $extraMem && adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSbatchLogDir; \"" >> $job
         else
             
             if [ ! -z "$runningSingleJob" ]; then
@@ -763,7 +785,7 @@ else
             else 
 
                 # this is never called? Because runAsPipeline usa --wrap ? 
-                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSlurmLogDir || : ; }" >> $job
+                echo "srun -n 1 $slurmAcc sh -e -o pipefail -c \"sh $slurmScript $slurmScriptParas; \" && touch $succFlag && { adjustDownStreamJobsSummarizeRunReleaseHoldings.sh $smartSbatchLogDir || : ; }" >> $job
             fi     
         fi
     fi
@@ -844,17 +866,17 @@ fi
 # not sure why we need this  but just in case, we will keep it here for now.
 echo -e "\n#myMem=$mem myTime=$time myPartition=$partition" >> $job
   
-  [ -f $smartSlurmLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSlurmLogDir/allJobs.txt
+  [ -f $smartSbatchLogDir/allJobs.txt ] || printf "%-10s   %-20s   %-10s   %-10s  %-10s %-10s %-10s\n" job_id depend_on job_flag program reference inputs comment > $smartSbatchLogDir/allJobs.txt
 
 #if [[ "$parentCmd" != */bin/snakemake* ]]; then
-    printf "%-10s  %-20s  %-10s %-10s %-10s %-10s %-15s\n" $jobID $depsID $flag $program $ref $inputs>> $smartSlurmLogDir/allJobs.txt;
+    printf "%-10s  %-20s  %-10s %-10s %-10s %-10s %-15s\n" $jobID $depsID $flag $program $ref $inputs>> $smartSbatchLogDir/allJobs.txt;
 #fi
 
 #echoerr1 New slurmScirpt is ready. The content is:
 #cat $job >&2
 echoerr1 "Submitted batch job $jobID"
 
-[ -z "$runningSingleJob" ] || echoerr1 -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSlurm.log \nPlease search $current_date to find it.\n" >&2
+[ -z "$runningSingleJob" ] || echoerr1 -e "Default mem: $memO and time: $minO\nActual  mem: $mem and time: $time \nLog is appended .smartSbatch.log \nPlease search $current_date to find it.\n" >&2
 
 echo Submitted batch job $jobID
 
