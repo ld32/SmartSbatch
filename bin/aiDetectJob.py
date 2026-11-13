@@ -55,6 +55,32 @@ def tokens_of(text):
         return text.split()
 
 
+VAR_RE = re.compile(r"\$\{(\w+)\}|\$(\w+)")
+ASSIGN_RE = re.compile(r"^\s*(?:export\s+|local\s+)?([A-Za-z_]\w*)=(\S*)\s*$")
+
+
+def expand_script(body, params):
+    """Substitute $1.. and simple `name=value` assignments into the script text.
+
+    Static only: nothing is executed, and values containing command
+    substitution or arithmetic are left alone. Unknown variables stay as-is.
+    """
+    env = {str(i + 1): p for i, p in enumerate(params)}
+    env["@"] = env["*"] = " ".join(params)
+
+    def sub(text):
+        return VAR_RE.sub(lambda m: env.get(m.group(1) or m.group(2), m.group(0)), text)
+
+    out = []
+    for line in body.splitlines():
+        line = sub(line)
+        m = ASSIGN_RE.match(line)
+        if m and "$(" not in m.group(2) and "`" not in m.group(2):
+            env[m.group(1)] = m.group(2).strip("\"'")
+        out.append(line)
+    return "\n".join(out)
+
+
 def local_inputs(tokens, rule, skip):
     """Apply the cached rule (flags + extensions) to this job's own tokens."""
     flags = set(rule.get("input_flags") or [])
@@ -124,7 +150,8 @@ def main():
         params = " ".join(rest[1:])
         text = "Script arguments: %s\n\n%s" % (params, body)
         # Lines of the script plus its arguments; inputs may be in either.
-        tokens = tokens_of(params) + tokens_of(body)
+        # Expand $1/$s etc. so ${s}_R1.fq.gz becomes this sample's real file.
+        tokens = tokens_of(params) + tokens_of(expand_script(body, rest[1:]))
         skip = {script}
         key_text = body  # arguments differ per sample, keep them out of the key
     else:
