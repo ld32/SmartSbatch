@@ -14,7 +14,7 @@ echo
 for i in {1..200}; do sleep 1; echo Cleanup counter: $i; done & 
 
 # to call this:  0     1         2       3       4          5       6       7         8     9      10         11       12     13       14          15
-#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memDef  $minDef   $mem  $time  $partition slurmAcc  inputs extraM extraTime userEmail
+#cleanUp.sh          "flag "software" "$ref" "$inputSize" $core   $memDef  $minDef   $mem  $time  $partition slurmAcc  inputs extraM extraTime userEmail excludeFailedNodes pipeline notes
 
 output="Running: $0"
 for param in "$@"; do
@@ -52,7 +52,8 @@ extraMemC=${13}
 extraTime=${14}
 userEmail=${15}
 excludeFailedNodes=${16}
-pipeline=${17:-unknown}          # v2: the pipeline this step belongs to (ssbatch -L)
+pipeline=${17:-unknown}
+notes=${18}                       # free text for the jobRecords notes column (e.g. what AI detected)          # v2: the pipeline this step belongs to (ssbatch -L)
 
 # v2 jobRecord: schema helpers + provenance. The record= column ORDER below must
 # match JR_COLUMNS_V2 in jobRecordSchema.sh (name-addressed on read).
@@ -276,7 +277,7 @@ ratioM=`echo "scale=2;$srunM/$totalM"|bc`; ratioT=`echo "scale=2;$min/$totalT"|b
 # todo: move this part to main job, so that when release job, this job record can be used for the statics
 # v2 column order == JR_COLUMNS_V2: pipeline,step,ref,sample,jobID,inputSize,memUsed,
 #   memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
-record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
+record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag" notes="$notes")
 # (dataToPlot mirrors the record; its only readers are the default-off ssMakePlots
 #  plot parsers below, which feat/retire-unused-plots removes.)
 echo dataToPlot,$record
@@ -362,7 +363,7 @@ if [ ! -f $succFile ]; then
     # Handle OOM, OOT, and OOMOOT cases
     if [[ "$jobStatus" == "OOM" ]] || [[ "$jobStatus" == "OOT" ]] || [[ "$jobStatus" == "OOMOOT" ]]; then
 
-        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
+        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="$jobStatus" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag" notes="$notes")
 
         jrAppendLine "$smartSbatchJobRecordDir/jobRecords.txt" "$record"
 
@@ -651,7 +652,7 @@ if [ ! -f $succFile ]; then
 
 # job was successful
 elif [ ! -z "$overEstimate" ]; then
-        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="OverEstimate" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag")
+        record=$(jrRow pipeline="$pipeline" step="$2" ref="$ref" sample="$jrSample" jobID="$SLURM_JOBID" inputSize="$inputSize" memUsed="$srunM" memAllocated="$totalM" timeUsed="$min" timeAllocated="$totalT" cores="$core" status="OverEstimate" user="$USER" node="$jrNode" epoch="$(date +%s)" isoDate="$(date +%Y-%m-%dT%H:%M:%S)" flag="$flag" notes="$notes")
         jrAppendLine "$smartSbatchJobRecordDir/jobRecord.oom.oot.over.txt" "$record"
 
     

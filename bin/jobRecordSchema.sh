@@ -17,7 +17,11 @@
 # --- v2 schema (current) ---------------------------------------------------
 # This order IS the on-disk column order. Keep names descriptive; the header
 # line is literally this list, comma-joined.
-JR_COLUMNS_V2="pipeline step ref sample jobID inputSize memUsed memAllocated timeUsed timeAllocated cores status user node epoch isoDate flag"
+# notes (18th) is free text about how the row was made, e.g. "AI-found:program+inputs(cache)".
+# Stores written before it existed (17 columns) are upgraded in place on the next
+# write: header gains ",notes" and old rows get an empty notes field.
+JR_COLUMNS_V2="pipeline step ref sample jobID inputSize memUsed memAllocated timeUsed timeAllocated cores status user node epoch isoDate flag notes"
+JR_NCOLS_V2=18
 JR_HEADER_V2="$(printf '%s' "$JR_COLUMNS_V2" | tr ' ' ',')"
 
 # Required subset (every consumer depends on these; the rest are
@@ -58,14 +62,15 @@ jrSchemaVersion() {
     # canonical header-led form; a file with nothing recognizable is left alone (0).
     awk -F, '
         /^[[:space:]]*$/            { next }                       # blank line (no vote, no "first")
-        !seen { seen=1; firstIsV2H = ($1=="pipeline" && $2=="step") }   # is the FIRST real line the v2 header?
-        $1=="pipeline" && $2=="step" { h2=1; next }               # v2 header (NOT a row whose pipeline is named "pipeline")
+        !seen { seen=1; firstIsV2H = ($1=="pipeline" && $2=="step" && NF==18) }   # is the FIRST real line the current v2 header?
+        $1=="pipeline" && $2=="step" { h2=1; if (NF!=18) old=1; next }   # v2 header (NOT a row whose pipeline is named "pipeline"); 17-col = pre-notes
         $1=="1jobID"               { h1=1; next }                  # v1 header (18- or 21-col)
         $1 ~ /^[0-9]+$/ && NF>=20  { v1=1; next }                  # v1 data row (20/21 col; >21 if a comma crept into the old date)
-        $1 !~ /^[0-9]+$/ && NF==17 { v2=1; next }                  # v2 data row
+        $1 !~ /^[0-9]+$/ && NF==18 { v2=1; next }                  # v2 data row
+        $1 !~ /^[0-9]+$/ && NF==17 { v2=1; old=1; next }           # v2 data row from before the notes column
                                    { }                             # junk: does not vote
         END {
-            if (v1)                 { print 1; exit }   # any v1 row -> migrate (even if mixed)
+            if (v1 || old)          { print 1; exit }   # any v1 row, or pre-notes v2 -> migrate (even if mixed)
             if (firstIsV2H)         { print 2; exit }   # header-led, no v1 -> canonical v2 (junk tolerated)
             if (v2 || h1 || h2)     { print 1; exit }   # headerless/mis-ordered v2, or a bare v1/v2 header -> normalize
             print 0                                     # nothing recognizable -> leave alone
@@ -74,7 +79,7 @@ jrSchemaVersion() {
 
 # A row is RECOGNIZED iff it is a v1 record (numeric jobID, 20+ cols -- 20/21, or
 # more if a comma crept into the old date) or a v2 record (non-numeric first field,
-# 17 cols). Everything else (blank lines aside) is UNRECOGNIZED: jrEmitV2 drops it,
+# 17 or 18 cols). Everything else (blank lines aside) is UNRECOGNIZED: jrEmitV2 drops it,
 # so it must never vanish silently. These three helpers share ONE definition of
 # "recognized", matching jrEmitV2 exactly, so the migration integrity check and the
 # warnings can't disagree with what conversion actually did.
@@ -87,7 +92,7 @@ jrUnrecognizedLines() {
         /^[[:space:]]*$/            { next }
         ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }
         $1 ~ /^[0-9]+$/ && NF>=20   { next }
-        $1 !~ /^[0-9]+$/ && NF==17  { next }
+        $1 !~ /^[0-9]+$/ && (NF==17 || NF==18) { next }
         { print }' "$1" 2>/dev/null
 }
 # jrCountUnrecognized <file> -> how many such rows.
@@ -97,7 +102,7 @@ jrCountRecognized() {
     [ -s "$1" ] || { echo 0; return; }
     awk -F, '
         ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }
-        ($1 ~ /^[0-9]+$/ && NF>=20) || ($1 !~ /^[0-9]+$/ && NF==17) { c++ }
+        ($1 ~ /^[0-9]+$/ && NF>=20) || ($1 !~ /^[0-9]+$/ && (NF==17 || NF==18)) { c++ }
         END { print c+0 }' "$1" 2>/dev/null
 }
 
@@ -117,7 +122,7 @@ jrLint() {
         $1=="1jobID"               { h1++; next }
         $1 ~ /^[0-9]+$/ && NF>=21  { v1_21++; next }
         $1 ~ /^[0-9]+$/ && NF==20  { v1_20++; next }
-        $1 !~ /^[0-9]+$/ && NF==17 { v2++; next }
+        $1 !~ /^[0-9]+$/ && (NF==17 || NF==18) { v2++; next }
         { bad++; if (nbad<5) badln[++nbad]=NR" (NF="NF"): "substr($0,1,60) }
         END {
             tag = (ver==2?"v2 (current)":(ver==1?"v1/mixed -> will auto-migrate":"UNRECOGNIZED"))
@@ -297,7 +302,7 @@ jrRewrite() {
 # never silently drift from the header. Portable (no associative arrays).
 #
 # SANITIZED: every value has commas, spaces, tabs and CRs/newlines replaced with
-# '_', so a row is ALWAYS exactly 17 clean comma-separated fields. This is what
+# '_', so a row is ALWAYS exactly 18 clean comma-separated fields. This is what
 # keeps field parsing accurate -- the legacy store's human `date` column (from the
 # `date` command) carried spaces, and in some locales a comma, which is how a row
 # could gain an extra field and shift the rest. A v2 row can never do that. Keys
@@ -327,7 +332,8 @@ jrRow() {
 # and -- crucially -- a MIXED file (v1 rows with v2 rows appended, the state the
 # old writer produced on an un-migrated store). Rules, in order:
 #   * a v1 header ("1jobID,...") or v2 header ("pipeline,...") line -> skipped
-#   * an already-v2 data row (17 fields) -> passed through unchanged
+#   * an already-v2 data row (18 fields) -> passed through unchanged; a
+#     pre-notes v2 row (17 fields) gets an empty notes field appended
 #   * a v1 data row (numeric jobID in field 1, 20+ fields) -> mapped to v2
 #     (inputSize is carried verbatim, even non-numeric like "missingInputFile")
 #   * anything else (junk / unexpected shape) -> skipped (jrRepair diverts these
@@ -340,7 +346,7 @@ jrRow() {
 # (jobID, inputSize, mem/time, status, user, program, ref, cores, flag) all live
 # in columns 1..15, BEFORE the date, so they are position-stable regardless. The
 # carried text fields are sanitized (commas/spaces -> '_') so the emitted v2 row
-# is always exactly 17 clean fields. isoDate is carried (sanitized) only when the
+# is always exactly 18 clean fields. isoDate is carried (sanitized) only when the
 # row has a clean width (<=21); on a comma-shifted row it is left blank -- epoch,
 # the authoritative timestamp, is preserved either way.
 jrEmitV2() {
@@ -352,14 +358,15 @@ jrEmitV2() {
       function san(x){ gsub(/[, \t\r]/,"_",x); return x }
       BEGIN{ print hdr }
       ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }  # header line (NOT a data row whose pipeline is named "pipeline")
-      $1 !~ /^[0-9]+$/ && NF==17 { print; next }              # already-v2 data row -> pass through
+      $1 !~ /^[0-9]+$/ && NF==18 { print; next }              # already-v2 data row -> pass through
+      $1 !~ /^[0-9]+$/ && NF==17 { print $0 ","; next }       # pre-notes v2 row -> empty notes
       $1 ~ /^[0-9]+$/ && NF>=20 {                             # v1 data row -> map
           # epoch = numeric tail if it looks like a unix timestamp, else none (20-col).
           # Use length(), NOT an {n,} interval regex: mawk (Debian/Ubuntu default awk)
           # ignores interval regexes, which would silently blank EVERY migrated epoch.
           ep = ($NF ~ /^[0-9]+$/ && length($NF) >= 9) ? $NF : ""
           iso = (NF<=21) ? san($20) : ""                       # human date only on a clean-width row
-          print "legacy",san($12),san($13),san(sampleOf($14)),$1,san($2),$7,$5,$8,$6,$15,san($9),san($10),"",ep,iso,san($14); next }
+          print "legacy",san($12),san($13),san(sampleOf($14)),$1,san($2),$7,$5,$8,$6,$15,san($9),san($10),"",ep,iso,san($14),""; next }
       # else: junk / unexpected -> skip
     ' "$f"
 }

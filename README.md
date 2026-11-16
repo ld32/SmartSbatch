@@ -57,6 +57,7 @@ Two companion tools help you watch and debug runs:
   - [Cromwell](#cromwell)
 - [AI assistance (optional)](#ai-assistance-optional)
 - [Reviewing and cleaning job records](#reviewing-and-cleaning-job-records)
+- [For developers: jobRecords.txt internals](#for-developers-jobrecordstxt-internals)
 - [sbatchAndTop](#sbatchandtop)
 - [Upgrading](#upgrading)
 
@@ -273,7 +274,7 @@ Estimation **groups by `pipeline` + `step` + `ref`**, fitting **memUsed** and **
 - **Thin groups broaden only on the pipeline axis.** When a group has fewer than 3 points to fit, estimation falls back to pooling across *named* pipelines for the *same step + ref* only — it relaxes `pipeline`, never `step` or `ref` (e.g. right after migration, where old rows are `pipeline=legacy`, which do pool). Standalone `unknown` is the exception: it never pools into a pipeline's fit and is never broadened, so ad-hoc runs stay out of pipeline estimates (an `unknown` group regresses only on its own data).
 
 ```text
-pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag
+pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAllocated,cores,status,user,node,epoch,isoDate,flag,notes
 ```
 
 | Col | Name | Col | Name | Col | Name |
@@ -283,27 +284,30 @@ pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAlloc
 | 3 | **ref** ⭐ | 9 | **timeUsed** ⭐ | 15 | epoch |
 | 4 | sample | 10 | timeAllocated | 16 | isoDate |
 | 5 | jobID | 11 | cores | 17 | flag |
-| 6 | **inputSize** ⭐ | 12 | **status** ⭐ | | |
+| 6 | **inputSize** ⭐ | 12 | **status** ⭐ | 18 | notes |
 
-<sub>⭐ = used directly by resource estimation. `pipeline` comes from `runAsPipeline --pipeline NAME` (default: the pipeline-script basename); `sample` and `flag` identify the per-sample job; `node`/`epoch`/`isoDate` are provenance.</sub>
+<sub>⭐ = used directly by resource estimation. `pipeline` comes from `runAsPipeline --pipeline NAME` (default: the pipeline-script basename); `sample` and `flag` identify the per-sample job; `node`/`epoch`/`isoDate` are provenance; `notes` is free text about how the row was made (see below).</sub>
+
+**`notes`** records anything worth knowing about how a row was produced. When [AI detection](#automatic-program-and-input-detection) filled in part of the job, it says what and how: `AI-found:program+inputs(ai)` (a fresh AI call) or `AI-found:program+ref+inputs(cache)` (answered from the cache). It is empty when you gave `-P`/`-R`/`-I` yourself. Files written before this column existed (17 columns) are upgraded automatically on the next write: the header gains `notes` and old rows get an empty value (a backup is made first).
 
 The **pipeline** of a step is set with `runAsPipeline --pipeline NAME` (or defaults to the script's basename). Refs of similar size can optionally be **pooled** so their history combines — see `JR_REF_CLASS` (default pools the common mouse/human genomes `mm*`/`hg*`/`GRC*`; set it to `""` to disable).
 
 Example rows:
 
 ```text
-rnaseq,findNumber,none,,46531,1465,3,2048,1,120,1,COMPLETED,ld32,node01,1719830400,2024-07-01T10:00:00,1.0.findNumber
-rnaseq,findNumber,none,,46535,2930,6,2048,2,120,1,COMPLETED,ld32,node01,1719830700,2024-07-01T10:05:00,1.0.findNumber
-rnaseq,findNumber,none,,46534,4395,9,2048,4,120,1,COMPLETED,ld32,node02,1719831000,2024-07-01T10:10:00,1.0.findNumber
+rnaseq,findNumber,none,,46531,1465,3,2048,1,120,1,COMPLETED,ld32,node01,1719830400,2024-07-01T10:00:00,1.0.findNumber,
+rnaseq,findNumber,none,,46535,2930,6,2048,2,120,1,COMPLETED,ld32,node01,1719830700,2024-07-01T10:05:00,1.0.findNumber,
+unknown,bwa-mem-4core,hg38,A_R1.fq.gz,46590,1339,5210,8192,42,120,4,COMPLETED,ld32,node02,1719834000,2024-07-01T11:00:00,bwa-mem-4core.A_R1.fq.gz,AI-found:program+ref+inputs(ai)
 ```
 
 > [!IMPORTANT]
-> **Upgrading from the old format.** Earlier SmartSbatch wrote a different, position-based `jobRecords.txt`. The tools read both, but to convert an existing store to the current schema once (recommended), run:
+> **Upgrading from the old format.** Earlier SmartSbatch wrote a different, position-based `jobRecords.txt` (21 columns), and later versions had 17 columns without `notes`. You do not need to do anything: the first job that writes a record converts the file in place to the current format, after saving a backup as `jobRecords.txt.back.<timestamp>.txt` (your rollback). To check or convert a store yourself:
 > ```bash
-> jrRepair.sh            # converts $smartSbatchJobRecordDir/jobRecords.txt in place
-> jrRepair.sh --dry-run  # preview only, writes nothing
+> jrRepair.sh --check    # report the format and any rows that do not fit it; changes nothing
+> jrRepair.sh --dry-run  # preview the conversion, writes nothing
+> jrRepair.sh            # convert $smartSbatchJobRecordDir/jobRecords.txt now
 > ```
-> It backs the original up to `jobRecord.back.<timestamp>.txt` (your rollback) before rewriting. Old rows carry no pipeline id, so they are tagged `pipeline=legacy`; new runs tagged with a real pipeline fall back to pooling that history until they accumulate their own.
+> Old rows carry no pipeline id, so they are tagged `pipeline=legacy`; new runs tagged with a real pipeline fall back to pooling that history until they accumulate their own. Rows that match no known format are never dropped silently: they are saved to `jobRecords.txt.unrecognized.<timestamp>.txt`.
 
 ### config.txt
 
@@ -1020,81 +1024,6 @@ Cancels all running and pending jobs that `ssbatch` submitted from the current d
 cancelAllJobs
 ```
 
-## How ssbatch works
-
-### jobRecords.txt
-
-A CSV of resource records for every successful job, one row per job. Its location is set by `smartSbatchJobRecordDir` in [`config.txt`](#configtxt) and defaults to `~/.SmartSbatch/jobRecords.txt`.
-
-<details>
-<summary><b>Should I use `#@end` or the blank-line close?</b></summary>
-
-Prefer **`#@end`** for anything beyond a trivial one-liner: the body is written verbatim to a per-job script, so `awk`, quotes, heredocs, multi-line bodies, and command substitution all work. The legacy blank-line close flattens the body into a single `--wrap` string, which mangles quoted whitespace and multi-line bodies. A pipeline is all-one-mode: if it uses `#@end` anywhere, every block must close with `#@end`.
-</details>
-
-<details>
-<summary><b>Can inputs be given as a size instead of a file?</b></summary>
-
-```text
-1jobID,2inputSize,3memDefault,4timeDefault,5memAllocated,6timeAllocated,7memUsed,8timeUsed,9jobStatus,10userID,11saccMem,12program,13reference,14flag,15core,16extraMem,17extraTime,18memRatio,19timeRatio,20date,21epoch
-```
-
-| Col | Name | Col | Name | Col | Name |
-|----:|------|----:|------|----:|------|
-| 1 | jobID | 8 | **timeUsed** ⭐ | 15 | core |
-| 2 | **inputSize** ⭐ | 9 | jobStatus | 16 | extraMem |
-| 3 | memDefault | 10 | userID | 17 | extraTime |
-| 4 | timeDefault | 11 | saccMem | 18 | memRatio |
-| 5 | memAllocated | 12 | **program** ⭐ | 19 | timeRatio |
-| 6 | timeAllocated | 13 | **reference** ⭐ | 20 | date |
-| 7 | **memUsed** ⭐ | 14 | flag | 21 | epoch |
-
-<sub>⭐ = used directly by resource estimation.</sub>
-
-Example rows:
-
-Add `noSuccEmail` (failures only) or `noEmail` (none) with `--email`.
-</details>
-
-### config.txt
-
-Ships at `SmartSbatch/config/config.txt`. It defines the partition time limits, the `adjustPartition` function, and defaults such as where records and logs live.
-
-> [!TIP]
-> Copy it to `~/.SmartSbatch/config/config.txt` to override settings for just yourself. Your personal copy wins over the shared one — handy on a shared cluster. (SmartSbatch refuses to run if your personal copy is *older* than the shared one, to stop you using a stale config; run [`upgrade.sh`](#upgrading) to refresh it.)
-
-Key settings:
-
-Yes, **if every step sets its own** `sbatchOptions`. Then omit `--sbatch-options`.
-</details>
-
-<details>
-<summary><b>Are -P, -I, and -F optional?</b></summary>
-
-Yes, all three.
-- `-P` omitted → program name is taken from the wrapped command or the script name.
-- `-I` omitted → estimation uses the program's past-usage distribution (90th percentile) instead of a size-based fit.
-- `-F` omitted → the unique flag becomes `program`+`input`, or `program`+a random suffix.
-</details>
-
-<details>
-<summary><b>Can -I take a size directly instead of a file?</b></summary>
-
-Yes: `-I jobSize:12` — `12` is the input size (any integer). Useful when the meaningful "size" isn't a single file.
-</details>
-
-<details>
-<summary><b>Can I pass -c and other sbatch options?</b></summary>
-
-Yes. Any standard sbatch option works and is passed through.
-</details>
-
-<details>
-<summary><b>How does ssbatch know a job already ran?</b></summary>
-
-On success it creates `<flag>.success` in `smartSbatchLogDir`. That file's presence is how reruns are detected.
-</details>
-
 ---
 
 # Using ssbatch with other pipeline managers
@@ -1183,6 +1112,7 @@ If it is missing, or your username is not in `allowed_users.txt`, SmartSbatch sa
 
 | Where | When it runs | What you get |
 |---|---|---|
+| `ssbatch` | automatically, when `-P`, `-R` or `-I` is missing — **once per job shape**, then cached | Program name, reference and input files for the estimate. See [Automatic program and input detection](#automatic-program-and-input-detection) |
 | `cleanUp.sh` (every job) | automatically, when a job ends **not** COMPLETED (Canceled excluded) | Failure analysis at the top of the job email, also saved to `smartSbatchLog/ai.<jobid>.txt` |
 | `estimateResource.sh` | automatically, **only when a resource curve is rebuilt** and there are ≥ `smartSbatchAiMinRecords` records | Review of the fit: outliers, non-linearity, regime changes. Saved to `<recordDir>/stats/<program>.<ref>.aiReview.txt` and copied into the step's `.out` log |
 | [`checkRun`](#checkrun-monitor-and-debug) | on demand: `1a`, `2a`, … or `?` | Per-job analysis (tailored to whether the job is done, failed, running or pending), or a summary of the whole run |
@@ -1191,7 +1121,80 @@ If it is missing, or your username is not in `allowed_users.txt`, SmartSbatch sa
 `calculateMemTime.sh` runs on **every** submission, so it deliberately makes **no** AI call — it only prints a review that `estimateResource.sh` produced earlier.
 
 > [!NOTE]
-> Nothing is decided by AI. It never changes a resource estimate, deletes a record, cancels a job, or blocks a submission — it only writes text for you to read.
+> AI never sets memory or time itself, deletes a record, cancels a job, or blocks a submission. The one thing it decides is *which* program, reference and input files a job has (only when you did not say), and the estimate is then computed from your job history as usual. Everything else it does is text for you to read.
+
+## Automatic program and input detection
+
+Resource estimates are keyed on a program name and scale with input size, so `ssbatch` needs to know both. You can say so with `-P program -R reference -I input1,input2`. When you leave any of them out, `ssbatch` asks AI to read the `--wrap` command or the job script and fill in the missing ones:
+
+```bash
+ssbatch -p short -t 2:0:0 --mem 8G -c 4 --wrap "bwa mem -t 4 ref/hg38.fa A_R1.fq.gz A_R2.fq.gz > A.sam"
+#AI detect (new AI query, saved as 1ce5f821df15798c): program=bwa-mem-4core ref=hg38 inputs=A_R1.fq.gz,A_R2.fq.gz
+```
+
+- **AI names, code checks.** AI names only the executable; the program name is built from the command itself (tool + subcommand such as `bwa-mem`, or the script name for `python`/`Rscript`/`java -jar` jobs, plus the core count). A tool that is not in the job is rejected, and only input paths that exist are kept. Input size is still measured with `du`, and memory/time still come from your job records.
+- **One AI call per job shape.** The answer is cached in `~/.SmartSbatch/aiCache/<key>.json`. The key ignores file names, option values and numbers, so every sample of the same step reuses it with no AI call, and finds its own input files locally. The log line says `(cache …, no AI call)` or `(new AI query …)`.
+- **Your flags always win.** Anything given with `-P`, `-R` or `-I` is used as is.
+- **Fixing a wrong guess.** Edit that step's JSON file in `aiCache/` (the log line names it); every later job of that shape uses your fix. Delete the file to ask AI again.
+- **Not found:** inputs that only exist at run time (built from a sample sheet, a loop or `$(…)`, or written by an earlier step), inputs given as a prefix (`plink --bfile geno`), and files a program opens without naming them. Such jobs fall back to the per-program estimate; pass `-I` if you know the input.
+- **Preview first.** `ssbatch -dryrun …` shows the detection and the estimate without submitting.
+
+### Evaluating detection and estimates after test runs
+
+**1. Was the detection right?** Each job's log in `smartSbatchLog/` keeps the detection line. From the run folder:
+
+```bash
+grep -h "^#AI detect" smartSbatchLog/*.out | sort | uniq -c
+```
+
+Check that:
+- the **program name** is the same for every sample of one step, and different for different steps (`bwa-mem-4core` vs `samtools-sort-4core`);
+- the **inputs** are the files whose size drives the cost, not references, indexes, configs or outputs;
+- **`inputs=none`** appears only for jobs that really have no input.
+
+See what AI decided for each job shape, and how often it was asked:
+
+```bash
+ls ~/.SmartSbatch/aiCache/ | wc -l       # AI calls ever made (one per job shape)
+grep -h '"example"\|"program"\|"input_flags"' ~/.SmartSbatch/aiCache/*.json
+grep -c "AI detect (cache" .smartSbatch.log; grep -c "AI detect (new" .smartSbatch.log   # cache hits vs AI calls
+```
+
+The first sample of each step should be `new` and the rest `cache`. A step that keeps showing `new` has a per-sample value the cache key does not mask; pass `-P/-I` for it, or report the two commands. To correct a guess, edit its JSON file or pass `-P/-R/-I`.
+
+**2. Did the estimates improve?** A step needs at least 3 COMPLETED jobs under the same name before it is fitted, so run 4–5 samples per step. Then summarise [`jobRecords.txt`](#jobrecordstxt). The commands below find each column by its header name, so they keep working if columns are added or reordered:
+
+```bash
+f=~/.SmartSbatch/jobRecords.txt
+awk -F, 'NR==1{for(i=1;i<=NF;i++)c[$i]=i; next}
+  { notes = ("notes" in c) ? $c["notes"] : ""
+    by = (notes ~ /^AI-found/) ? "ai" : "user"            # who named program/inputs
+    k = $c["step"] " " $c["ref"] " " by
+    n[k]++; if ($c["status"] != "COMPLETED") bad[k]++
+    if ($c["inputSize"] + 0 == 0) zero[k]++
+    if ($c["memAllocated"]  > 0) mu[k] += $c["memUsed"]  / $c["memAllocated"]
+    if ($c["timeAllocated"] > 0) tu[k] += $c["timeUsed"] / $c["timeAllocated"] }
+  END { printf "%-40s %5s %5s %6s %8s %8s\n", "step ref by", "jobs", "fail", "size0", "mem-use", "time-use"
+        for (k in n) printf "%-40s %5d %5d %6d %7.0f%% %7.0f%%\n", k, n[k], bad[k], zero[k], 100*mu[k]/n[k], 100*tu[k]/n[k] }' $f | { IFS= read -r h; echo "$h"; sort; }
+```
+
+| Column | Good | Bad sign |
+|---|---|---|
+| `by` | `ai` rows and `user` rows of the same step look alike | `ai` rows clearly worse: detection named the step or its inputs differently from what you would have |
+| `fail` | near 0 | out-of-memory/time jobs: each was resubmitted with more resources, costing a retry |
+| `size0` (jobs with input size 0) | 0 for steps that read input | equal to `jobs`: inputs were not found, so the estimate cannot scale with size |
+| `mem-use`, `time-use` (share of the request actually used) | about 60–90% | ~10%: still over-requesting, usually too few records or a poor fit |
+
+`by` comes from the [`notes`](#jobrecordstxt) column: a row is `ai` when AI detection filled in its program, reference or inputs. To list just those rows with what AI found:
+
+```bash
+awk -F, 'NR==1{for(i=1;i<=NF;i++)c[$i]=i; next}
+  ("notes" in c) && $c["notes"] ~ /^AI-found/ {print $c["jobID"], $c["step"], $c["ref"], $c["sample"], $c["inputSize"]"K", $c["status"], $c["notes"]}' ~/.SmartSbatch/jobRecords.txt
+```
+
+Look closer with [`reviewJobRecords.py`](#reviewing-and-cleaning-job-records) (records per step, with an optional AI review), [`checkRun`](#checkrun-monitor-and-debug) → `e` (efficiency of this run), and the fitted plots `~/.SmartSbatch/stats/<pipeline>.<step>.<ref>.mem.png` / `.time.png`.
+
+For a fair comparison, run the same few samples twice, once with `-P/-R/-I` and once without, then compare the `user` and `ai` lines of the summary. If AI found the same inputs you would have given, the step names match and the estimates are identical.
 
 ## Settings
 
@@ -1201,6 +1204,7 @@ All in [`config.txt`](#configtxt) (your `~/.SmartSbatch/config/config.txt` copy 
 export smartSbatchAiEnabled=yes        # no = turn AI off completely
 export smartSbatchAiCall=              # empty = auto-detect ai_call
 export smartSbatchAiTimeout=90         # s, default cap for any AI call
+export smartSbatchAiDetect=yes         # no = never ask AI for program/reference/inputs
 
 export smartSbatchAiMinRecords=10      # records needed before a fitted curve is reviewed
 export smartSbatchAiReviewTimeout=30   # s, curve review — short, a submission is waiting
@@ -1256,6 +1260,63 @@ How it works:
 
 > [!NOTE]
 > Deletions only touch a working copy until you press `s`. Quitting without saving leaves `jobRecords.txt` untouched.
+
+---
+
+
+# For developers: jobRecords.txt internals
+
+This is the reference for code that reads or writes [`jobRecords.txt`](#jobrecordstxt). Everything below lives in one file, `bin/jobRecordSchema.sh`; source it rather than re-implementing any of it.
+
+## Rules for readers and writers
+
+- **Read columns by name, never by position.** Use the awk prelude `JR_AWK_COLMAP` (`NR==1{for(i=1;i<=NF;i++)col[$i]=i; next}`, then `$(col["memUsed"])`), the bash helper `jrcol <name> <header>`, or `csv.DictReader` in Python (as `reviewJobRecords.py` does). This is what lets a column such as `notes` be added without breaking anything.
+- **Read through `jrEmitV2 <file>`.** It returns the store in the current format whatever is on disk (old 21-column rows, 17-column rows, mixed files), so a reader never has to care which version a user still has.
+- **Write only through `jrRow` / `jrAppendRow`** (one row, fields given as `name=value`) and **rewrite only through `jrRewrite`** (prunes). These place fields in the right column order, replace commas, spaces, tabs and newlines in values with `_` so every row has exactly the header's number of fields, take a lock (a `mkdir` lock, safe on NFS; a stale lock is reclaimed after `JR_LOCK_STALE` seconds), and convert an old-format store before writing to it. `cleanUp.sh` is the only place that writes rows.
+
+## Columns: why each exists
+
+Eleven columns are **required** (`JR_REQUIRED_V2`); estimation, pruning and failure analysis do not work without them:
+
+| Column | Used for |
+|---|---|
+| `pipeline`, `step`, `ref` | the fit key: one memory/time fit per (pipeline, step, reference group) |
+| `jobID` | record identity, so a review tool can name a row to delete |
+| `inputSize` | x of the regression; size filter in failure analysis |
+| `memUsed`, `timeUsed` | y of the memory and time regressions |
+| `memAllocated`, `timeAllocated` | out-of-memory / out-of-time analysis: a proven-insufficient floor |
+| `status` | keep only COMPLETED history; detect OOM/OOT |
+| `epoch` | time windows (recent failures, 7-day prune) |
+
+The rest are cheap to record and kept for people and future analysis; no code may depend on their presence or position: `sample` (from the flag, so a review can name the sample), `cores`, `user` (who ran it, in shared stores), `node` (to spot a slow node), `isoDate` (readable time), `flag` (the full job id) and `notes` (how the row was produced, e.g. what AI detection filled in).
+
+## Version detection
+
+The **header is the version**; there is no marker line. `jrSchemaVersion <file>` scans every row, not just the first, because stores can be mixed (an old node appending old-format rows into a converted store):
+
+| On disk | Detected as | Action on next write |
+|---|---|---|
+| header `pipeline,step,…,notes` first, all rows 18 fields | current | none |
+| any 20/21-field row with a numeric first field (old format), any 17-field row or header (before `notes`), or no header first | needs conversion | convert in place (backup first) |
+| nothing recognisable | unknown | left untouched, with a warning |
+
+Conversion is checked before it is committed: the new file must be in the current format and keep every recognisable row, or the store is left untouched and an error is printed. `jrRepair.sh --check` prints the same report for a human.
+
+## Mapping from the old 21-column format
+
+Old order: `jobID inputSize memDefault timeDefault memAllocated timeAllocated memUsed timeUsed status user saccMem program ref flag cores extraMem extraTime ratioM ratioT date epoch`.
+
+- **Carried over:** jobID, inputSize, memUsed, memAllocated, timeUsed, timeAllocated, status, `program` → `step`, ref, cores, user, flag, epoch (taken from the last field only if it looks like a Unix time, because the old free-text date could contain a comma).
+- **Derived:** `sample` from the flag (pipeline flags only, `step.deps.name.sample`); `isoDate` from the old date; `pipeline` = `legacy` (old rows never recorded it); `node` and `notes` empty.
+- **Dropped** (nothing read them): memDefault, timeDefault, saccMem, extraMem, extraTime, ratioM, ratioT.
+
+## Reference pooling
+
+`JR_REF_CLASS` maps references of similar size to one group so their history is fitted together. The default pools mouse and human (`mm9 mm10 mm39 hg19 hg38 GRCm38 GRCm39 GRCh37 GRCh38` → `mammal`). Set it to `""` to fit every reference separately. `none` (tools without a reference) is never pooled.
+
+## Fitting performance
+
+`estimateResource.sh` builds the memory and time extracts for a fit in **one** pass over the store (`jrExtractBoth`), and only when the cached fit is stale, because the store is shared and keeps growing. gnuplot does the fit; its results (`Finala`, `Finalb`, `STDFIT`, …) are printed by gnuplot itself rather than scraped from `fit.log`, which avoids a race between concurrent jobs.
 
 ---
 

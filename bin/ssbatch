@@ -339,6 +339,7 @@ mem="${mem^^}"; mem1="${mem1^^}"
 # Results are cached in $smartSbatchJobRecordDir/aiCache, so repeated jobs of
 # the same shape make no AI call. Explicit flags always win.
 aiDetectMsg=""
+aiNote=""   # goes to the notes column of jobRecords.txt
 if [ "$smartSbatchAiDetect" != "no" ] && [ "$smartSbatchAiEnabled" != "no" ] && { [ -z "$program" ] || [ -z "$ref" ] || [ -z "$inputs" ]; }; then
     if [ ! -z "$wrapCMD" ]; then
         aiOut=`python3 $(dirname $0)/aiDetectJob.py "$smartSbatchJobRecordDir" "$core" wrap "$wrapCMD" 2>/dev/null`
@@ -347,9 +348,12 @@ if [ "$smartSbatchAiDetect" != "no" ] && [ "$smartSbatchAiEnabled" != "no" ] && 
     fi
     IFS=$'\t' read -r aiProgram aiRef aiInputs aiSource aiKey <<< "$aiOut"
     if [[ "$aiSource" == cache || "$aiSource" == ai ]]; then
-        [ -z "$program" ] && [ "$aiProgram" != "-" ] && program=$aiProgram
-        [ -z "$ref" ] && [ "$aiRef" != "-" ] && ref=$aiRef
-        [ -z "$inputs" ] && [ "$aiInputs" != "-" ] && inputs=$aiInputs
+        aiFound=""
+        [ -z "$program" ] && [ "$aiProgram" != "-" ] && program=$aiProgram && aiFound="$aiFound+program"
+        # a reference of "none" is not a finding, so it is not credited in the note
+        [ -z "$ref" ] && [ "$aiRef" != "-" ] && ref=$aiRef && [ "$aiRef" != none ] && aiFound="$aiFound+ref"
+        [ -z "$inputs" ] && [ "$aiInputs" != "-" ] && inputs=$aiInputs && aiFound="$aiFound+inputs"
+        [ -z "$aiFound" ] || aiNote="AI-found:${aiFound#+}($aiSource)"
         [ "$aiSource" == cache ] && aiDetectMsg="#AI detect (cache $aiKey, no AI call):" || aiDetectMsg="#AI detect (new AI query, saved as $aiKey):"
         aiDetectMsg="$aiDetectMsg program=$program ref=${ref:-none} inputs=${inputs:-none}\n#Wrong? Edit or delete $smartSbatchJobRecordDir/aiCache/$aiKey.json, or pass -P/-R/-I."
         echoerr ${aiDetectMsg//\\n/ }
@@ -661,7 +665,7 @@ realSbatch=`which -a sbatch | grep -v SmartSbatch | head -n 1`
 # nextflow
 if [ -f .command.sh ] && [ -f .command.run ]; then 
     cp .command.run .command.run.back 
-    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
+    sed -i "s/exit \$exit_status/cleanUp.sh $flag $program \\\"${ref//\//-}\\\" $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"${inputs##*/}\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline \\\"$aiNote\\\"\n  exit \$exit_status/" .command.run >> ../../../.nextflow.log
     
     sed -i "s/\$NXF_ENTRY/memCpuMonitor.sh $flag $mem $min $memO $core \&\n\$NXF_ENTRY/" .command.run >> ../../../.nextflow.log
 
@@ -675,7 +679,7 @@ else
 
     # has --wrap
     if [ -z "$slurmScript" ]; then
-        echo -e "#!/bin/bash\necho\necho '========== SmartSbatch setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
+        echo -e "#!/bin/bash\necho\necho '========== SmartSbatch setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline \\\"$aiNote\\\"; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" > $job
 
         # testing without trap
         #echo -e "#!/bin/bash\ndate\n" > $job
@@ -745,7 +749,7 @@ else
         echo -e "#!/bin/bash" > $job
 
         grep "^#SBATCH" $slurmScript | grep -v mem-per-cpu >> $job || true >> $job
-        echo -e "echo\necho '========== SmartSbatch setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
+        echo -e "echo\necho '========== SmartSbatch setup: $flag =========='\necho\ndate\n\ntrap \"{ cleanUp.sh $flag $program ${ref//\//-} $inputSize $core $memO $minO $mem $min $partition  \\\"${slurmAcc#*-A }\\\" \\\"$inputs\\\" $extraMem $defaultExtraTime \\\"$userEmail\\\" \\\"$excludeFailedNodes\\\" $pipeline \\\"$aiNote\\\"; }\" EXIT\nmemCpuMonitor.sh $flag $mem $min $memO $core >/dev/null 2>&1 &\n" >> $job
 
         #echo "touch $startFlag" >> $job
         echo -e "unset SLURM_CPU_BIND" >> $job
