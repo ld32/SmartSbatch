@@ -677,13 +677,24 @@ elif [ ! -z "$overEstimate" ]; then
 
 fi
 
-# NOTE: the per-job/barchart gnuplot pngs, their .dataMem/.dataTime/.output CSVs,
-# and the on-demand DAG png render used to live here (gated behind ssMakePlots).
-# They are gone: efficiency now lives in efficiency.tsv + checkRun (press e /
-# checkRunGrid --efficiency), and checkRun's g key renders the workflow graph
-# live, so nothing in the pipeline needs to write those files. The per-run dollar
-# savings figure, which was derived from the now-removed plot CSV, is dropped with
-# it; the per-job savings below (from memCPU.txt) is unchanged.
+# Per-job memory and CPU plots over time, from memCPU.txt (written by
+# memCpuMonitor.sh: counter usedMem wastedMem savedMem cpu%). On by default;
+# set ssMakePlots=no to turn them off. They are attached to the job email.
+memPng=$smartSbatchLogDir/job_$SLURM_JOBID.mem.png
+cpuPng=$smartSbatchLogDir/job_$SLURM_JOBID.cpu.png
+if [ "${ssMakePlots:-yes}" != no ] && command -v gnuplot >/dev/null 2>&1 && [ -s $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt ]; then
+    plotData=$smartSbatchLogDir/job_$SLURM_JOBID.plot.txt
+    # keep only numeric sample rows (drops the "jobID:... time:..." start marker)
+    # column 6 = wasted CPU: reserved (cores x 100%) minus used, floored at 0
+    awk -v c="${core:-1}" 'NF>=5 && $1 ~ /^[0-9]+$/ && $1 > 0 {w=c*100-$5; print $1, $2, ($3<0?0:$3), ($4<0?0:$4), $5, (w<0?0:w)}' $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt > $plotData
+    if [ -s $plotData ]; then
+        width=`wc -l < $plotData`; width=$((width*16)); [ $width -le 800 ] && width=800
+        gnuplot -e "set key outside; set key reverse; set key invert; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$memPng'; set title 'Time vs. Mem for job $SLURM_JOBID'; set xlabel 'Time (min)'; set ylabel 'Mem (M)'; plot '$plotData' using 2:xtic(1) title 'Used' lc rgb 'green', '' using 3:xtic(1) title 'Wasted' lc rgb 'red', '' using 4:xtic(1) title 'Saved' lc rgb 'yellow'" 2>/dev/null
+        gnuplot -e "set key outside; set key reverse; set key invert; set style data histogram; set style histogram rowstacked gap 2; set style fill solid border rgb 'black'; set xtics rotate by -45; set terminal png size $width,600; set output '$cpuPng'; set title 'Time vs. CPU Usage for job $SLURM_JOBID ($core cores = $((core*100))%)'; set xlabel 'Time (min)'; set ylabel 'CPU Usage (%)'; plot '$plotData' using 5:xtic(1) title 'Used' lc rgb 'green', '' using 6:xtic(1) title 'Wasted' lc rgb 'red'" 2>/dev/null
+        echo "To see the plots: display $memPng; display $cpuPng"
+    fi
+    rm -f $plotData
+fi
 
 rate=0.0013 # $0.0013 per G per hour
 maxSaved=`cut -d' ' -f4 $smartSbatchLogDir/job_$SLURM_JOBID.memCPU.txt | sort -n | tail -n1`
@@ -789,16 +800,12 @@ fi
 
 
 # ---------------------------------------------------------------------------
-# Consolidated, text-only notifications (no png attachments). The old code sent
-# one email per job with up to 7 pngs (and a copy to a hard-coded dev address);
-# this replaces that with two separate, de-duplicated goals:
-#   status      -> one per-SAMPLE alert: WARN on break, CONFIRM on completion
+# Notifications:
+#   per-JOB     -> one email per job (success or failure) with mem/cpu plots
+#                  attached; ssEmailSkipMemPct can drop well-sized successes
 #   efficiency  -> one per-RUN email carrying the per-sample efficiency table,
 #                  pointing at `checkRun` (press e) for the per-step breakdown
-# Each fires once, guarded by a marker file, so volume is ~one per sample plus
-# one per run instead of one per job. Honors --email noEmail (everything off)
-# and noSuccEmail (failures only). The sample key is the first input's basename
-# (fallback: program name), matching efficiency.tsv and allJobs.txt column 6.
+# Honors lessEmail=noEmail (everything off) and noSuccEmail (failures only).
 # ---------------------------------------------------------------------------
 _ss_sendmail() {   # <subject> <body>
     [ "$lessEmail" = noEmail ] && { echo "noEmail: suppressed [$1]"; return 0; }
@@ -807,34 +814,39 @@ _ss_sendmail() {   # <subject> <body>
 
 alljobs="$smartSbatchLogDir/allJobs.txt"
 
-if [ ! -f "$succFile" ]; then
-    # ---- sample BREAK: one warning per sample (first failure wins) ----
-    brkMark="$smartSbatchLogDir/.emailed.break.$effSample"
-    if [ ! -f "$brkMark" ]; then
-        : > "$brkMark"
-        _ss_sendmail "SmartSbatch FAIL: sample $effSample ($jobStatus)" \
-            "Sample '$effSample' FAILED at step $flag ($jobStatus).\nRe-run the same command to continue -- SmartSbatch will resize and resubmit.\n\n$toSend"
-    else
-        echo "break already emailed for sample $effSample"
+# ---- per-JOB email (default: every job, success or failure) ----
+# Carries the job log, errors, AI analysis and the mem/cpu plots (plus the
+# estimator's fit plots for this program when present).
+# To cut volume later: ssEmailSkipMemPct=N skips SUCCESS emails for jobs whose
+# peak memory used >= N% of what was reserved (well-sized jobs need no attention).
+# Failures are always emailed. Unset/0 = send all.
+memPct=0
+[[ "$srunM" =~ ^[0-9]+$ ]] && [[ "$totalM" =~ ^[0-9]+$ ]] && [ "$totalM" -gt 0 ] && memPct=$((srunM * 100 / totalM))
+skipJobEmail=""
+if [ -f "$succFile" ]; then
+    [ "$lessEmail" = noSuccEmail ] && skipJobEmail="noSuccEmail"
+    if [[ "${ssEmailSkipMemPct:-0}" =~ ^[0-9]+$ ]] && [ "${ssEmailSkipMemPct:-0}" -gt 0 ] && [ "$memPct" -ge "$ssEmailSkipMemPct" ]; then
+        skipJobEmail="memory use ${memPct}% >= ${ssEmailSkipMemPct}%"
     fi
 else
-    # ---- sample COMPLETE: fire from the terminal (highest-step) job of the
-    #      sample, so one confirmation per sample. Sample + step are read from
-    #      allJobs.txt (col 3 = flag -> step; col 6 = inputs -> sample) the same
-    #      way effSample is derived, so both sides agree.
-    if [ "$lessEmail" != noSuccEmail ] && [ -f "$alljobs" ]; then
-        myStep="${flag%%.*}"
-        maxStep=`awk -v s="$effSample" '
-            function samp(inp,   x,p,n){ sub(/^,/,"",inp); sub(/ .*/,"",inp); split(inp,x,","); n=split(x[1],p,"/"); return p[n] }
-            NR>1 && NF>=6 { st=$3; sub(/\..*/,"",st); smp=samp($6); if(smp==""||smp=="none") smp=$4; if(smp==s && st+0>m) m=st+0 }
-            END { print m+0 }' "$alljobs"`
-        cmpMark="$smartSbatchLogDir/.emailed.done.$effSample"
-        if [ "${myStep:-0}" -ge "${maxStep:-0}" ] && [ ! -f "$cmpMark" ]; then
-            : > "$cmpMark"
-            _ss_sendmail "SmartSbatch done: sample $effSample completed" \
-                "Sample '$effSample' completed successfully (through step $myStep).\n\nSee 'checkRun' (press e) for resource efficiency."
-        fi
-    fi
+    toSend="Step $flag of sample '$effSample' FAILED ($jobStatus).\nRe-run the same command to continue -- SmartSbatch will resize and resubmit.\n\n$toSend"
+fi
+toSend="Peak memory used: ${srunM}M of ${totalM}M reserved (${memPct}%).\n$toSend"
+
+if [ "$lessEmail" = noEmail ]; then
+    echo "noEmail: job email suppressed [$s]"
+elif [ -n "$skipJobEmail" ]; then
+    echo "job email skipped: $skipJobEmail [$s]"
+else
+    attach=()
+    for f in $memPng $cpuPng $smartSbatchJobRecordDir/stats/$software.$ref.mem.png $smartSbatchJobRecordDir/stats/$software.$ref.time.png; do
+        [ -s "$f" ] && attach+=(-a "$f")
+    done
+    echo -e "$toSend" | mail -s "$s" "${attach[@]}" "$USER" 2>/dev/null && echo "email sent: $s" || \
+        { echo -e "$toSend" | mail -s "$s" "$USER" 2>/dev/null && echo "email sent without attachments: $s" || echo "email not sent: $s"; }
+fi
+
+if [ -f "$succFile" ]; then
 
     # ---- per-RUN efficiency email: fire once, when EVERY job has succeeded ----
     # (A run with any failed sample does not get a "complete" email; its break
@@ -853,7 +865,10 @@ else
         # the synchronous harness, where submit == run). On real Slurm allJobs is
         # complete up front, so succN>=total already pins the true last job; this
         # guard just makes the harness agree.
-        myDep=`echo "$flag" | cut -d. -f2`
+        # Standalone jobs (flag not of the pipeline form step.dep.name) never
+        # trigger it: without a dot, cut would return the whole flag as "dep".
+        myDep=0
+        [[ "$flag" =~ ^[0-9]+\.([^.]+) ]] && myDep="${BASH_REMATCH[1]}"
         runMark="$smartSbatchLogDir/.emailed.effrun"
         if [ "${total:-0}" -ge 1 ] && [ "${succN:-0}" -ge "${total:-0}" ] && [ "${myDep:-0}" != 0 ] && [ ! -f "$runMark" ]; then
             : > "$runMark"
