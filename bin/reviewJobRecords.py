@@ -6,7 +6,7 @@
 # jobRecords v2: columns are addressed by NAME (csv.DictReader), and records are
 # grouped by (pipeline, step, ref) -- the same key the estimator fits on -- so two
 # pipelines that share a program/step stay separate. A legacy v1 file is refused
-# with a pointer to jrRepair.sh (this tool is offline; a hard prompt is fine).
+# with a pointer to jobRecordsRepair.sh (this tool is offline; a hard prompt is fine).
 
 import csv
 import time
@@ -88,7 +88,7 @@ def read_job_records(ignore_patterns=None):
         if not reader.fieldnames or reader.fieldnames[0] != "pipeline":
             sys.exit(
                 "This jobRecord is not in the v2 schema (its header does not start "
-                "with 'pipeline').\nRun  jrRepair.sh  once to convert it, then re-run "
+                "with 'pipeline').\nRun  jobRecordsRepair.sh  once to convert it, then re-run "
                 "this tool."
             )
         rows = []

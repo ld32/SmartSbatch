@@ -6,7 +6,7 @@ usage() { echoerr -e "Usage: \n$0 bowtie2 hg19 inputs\nReturn mem in M and time 
 
 #set -x
 
-# v2 jobRecords: schema SSOT (jrEmitV2 compat shim reads v1 or v2; JR_AWK_COLMAP
+# v2 jobRecords: schema SSOT (jobRecordsEmitV2 compat shim reads v1 or v2; JOB_RECORDS_AWK_COLMAP
 # gives name->index). Readers below parse v2 by name via the shim.
 . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
 
@@ -32,28 +32,28 @@ pipeline=${8:-unknown}
 # v2 grouping: fit per (pipeline, step, ref). refGroup allows optional size-class
 # pooling of similar-sized refs (P4c ref-class); for now it is the ref itself.
 # statKey names the per-group stats files. refRe matches the refs in this group.
-refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
-refRe=$(jrRefMatchRe "$ref" 2>/dev/null); [ -n "$refRe" ] || refRe="^$ref\$"
+refGroup=$(jobRecordsRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
+refRe=$(jobRecordsRefMatchRe "$ref" 2>/dev/null); [ -n "$refRe" ] || refRe="^$ref\$"
 statKey="$pipeline.$program.$refGroup"
 
-# jrExtractBoth <memOutfile> <timeOutfile> : build BOTH the inputSize->mem and
+# jobRecordsExtractBoth <memOutfile> <timeOutfile> : build BOTH the inputSize->mem and
 # inputSize->time extracts for this (pipeline, step, refGroup) in a SINGLE pass over
-# jobRecords.txt (one jrEmitV2 + one awk emitting both). Fallback ladder: if the
+# jobRecords.txt (one jobRecordsEmitV2 + one awk emitting both). Fallback ladder: if the
 # pipeline-scoped history has fewer than 3 points (too thin to fit -- e.g. right
 # after migration, where old rows are pipeline=legacy), re-emit pooling across
 # pipelines for the same step + ref group. Then dedupe each by input size.
-jrExtractBoth() {
-    local memOut=$1 timeOut=$2 jr="$smartSbatchJobRecordDir/jobRecords.txt"
+jobRecordsExtractBoth() {
+    local memOut=$1 timeOut=$2 jobRecords="$smartSbatchJobRecordDir/jobRecords.txt"
     local rawM rawT; rawM=$(mktemp); rawT=$(mktemp)
     # $1 of the inner filter is the pipeline to match ("" = pool across NAMED
     # pipelines for the thin-group fallback). A query for standalone "unknown" also
-    # matches "legacy": pre-v2 (jR1) rows carried no pipeline, so on migration they
+    # matches "legacy": pre-v2 (v1) rows carried no pipeline, so on migration they
     # all became legacy and a v1 standalone run is indistinguishable from a v1
     # pipeline run -- default to inclusion so standalone estimation can use that
     # history (legacy is grouped by step/ref, exactly as before the pipeline column).
-    _jrEmitPair() {
-        jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
-            -v mo="$rawM" -v to="$rawT" "$JR_AWK_COLMAP"'
+    _jobRecordsEmitPair() {
+        jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$1" -v a="$program" -v rre="$refRe" \
+            -v mo="$rawM" -v to="$rawT" "$JOB_RECORDS_AWK_COLMAP"'
             $(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p || (p=="unknown" && $(col["pipeline"])=="legacy")) && \
             $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])+0>0 {
                 print $(col["inputSize"]), $(col["memUsed"])  > mo
@@ -61,14 +61,14 @@ jrExtractBoth() {
             }'
     }
     : > "$rawM"; : > "$rawT"
-    _jrEmitPair "$pipeline"
+    _jobRecordsEmitPair "$pipeline"
     # Thin-group fallback relaxes ONLY the pipeline axis, and only across NAMED
     # pipelines: standalone unknown never pools a named pipeline's fit (and is never
     # pooled into one). unknown does not broaden here -- it already pools its own
     # data plus legacy in the first pass above, and goes no further.
     if [ "$pipeline" != unknown ] && [ "$(wc -l < "$rawM" 2>/dev/null || echo 0)" -lt 3 ]; then
         : > "$rawM"; : > "$rawT"
-        _jrEmitPair ""
+        _jobRecordsEmitPair ""
     fi
     sort -r -k1,1 -k2,2 "$rawM" | sort -u -k1,1 > "$memOut"
     sort -r -k1,1 -k2,2 "$rawT" | sort -u -k1,1 > "$timeOut"
@@ -163,17 +163,17 @@ if [ $inputs == none ]; then
     if test `find $smartSbatchJobRecordDir/stats/$statKey.memTime.noInput -mmin +2 2>/dev/null` && [ $rows -lt 200 ] || [ $rows -eq 0 ]; then
         mkdir -p $smartSbatchJobRecordDir/stats/
 
-        # No-input history (percentile source). Mirror jrExtractBoth exactly: query
+        # No-input history (percentile source). Mirror jobRecordsExtractBoth exactly: query
         # this pipeline first -- and for standalone unknown also pull in legacy, so a
-        # migrated jR1 store still gives a percentile instead of the bare default.
+        # migrated v1 store still gives a percentile instead of the bare default.
         # Then, for NAMED pipelines only, if fewer than 3 records, re-query pooling
         # across named pipelines (+ legacy). unknown never broadens to a named
         # pipeline's history, matching the size-based path's isolation.
         noInAwk='$(col["status"])=="COMPLETED" && (p=="" || $(col["pipeline"])==p || (p=="unknown" && $(col["pipeline"])=="legacy")) && $(col["step"])==a && $(col["ref"]) ~ rre { print $(col["memUsed"]), $(col["timeUsed"]) }'
         nif="$smartSbatchJobRecordDir/stats/$statKey.memTime.noInput"
-        jrEmitV2 "$smartSbatchJobRecordDir/jobRecords.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
+        jobRecordsEmitV2 "$smartSbatchJobRecordDir/jobRecords.txt" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" "$JOB_RECORDS_AWK_COLMAP""$noInAwk" | uniq > "$nif"
         if [ "$pipeline" != unknown ] && [ "$( { wc -l < "$nif" 2>/dev/null || echo 0; } )" -lt 3 ]; then
-            jrEmitV2 "$smartSbatchJobRecordDir/jobRecords.txt" 2>/dev/null | awk -F, -v p="" -v a="$program" -v rre="$refRe" "$JR_AWK_COLMAP""$noInAwk" | uniq > "$nif"
+            jobRecordsEmitV2 "$smartSbatchJobRecordDir/jobRecords.txt" 2>/dev/null | awk -F, -v p="" -v a="$program" -v rre="$refRe" "$JOB_RECORDS_AWK_COLMAP""$noInAwk" | uniq > "$nif"
         fi
 
         # make plot and calculate statistics
@@ -250,8 +250,8 @@ else
             #filter by program and reference
             # todo: maybe able to replace / in ref at begaining of the script?
             ref=${ref//\//-}
-            # single pass builds both extracts (see jrExtractBoth)
-            jrExtractBoth "$smartSbatchJobRecordDir/stats/$statKey.mem" "$smartSbatchJobRecordDir/stats/$statKey.time"
+            # single pass builds both extracts (see jobRecordsExtractBoth)
+            jobRecordsExtractBoth "$smartSbatchJobRecordDir/stats/$statKey.mem" "$smartSbatchJobRecordDir/stats/$statKey.time"
 
             echoerr "Got mem data from jobRecords.txt (content of $smartSbatchJobRecordDir/stats/$statKey.mem):"
             echoerr `cat $smartSbatchJobRecordDir/stats/$statKey.mem`
@@ -331,12 +331,12 @@ fi
 # proves this larger input needs more too), then escalate it with the SAME helper
 # auto-rerun uses. The final request is max(estimate, floor), so initial submit,
 # auto-rerun, and a fresh manual rerun can never drop below a known failure.
-command -v nextMemAfterFail >/dev/null 2>&1 || { _sjrd="$smartSbatchJobRecordDir"; . "$(dirname "$0")/../config/config.txt"; [ -n "$_sjrd" ] && smartSbatchJobRecordDir="$_sjrd"; }
-jr=$smartSbatchJobRecordDir/jobRecords.txt
-if [ -f "$jr" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
-    recentFails=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v t="$(date -d '1 hour ago' +%s)" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"]) ~ rre' | wc -l`
-    maxFailMem=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOM/ {if($(col["memAllocated"])>m)m=$(col["memAllocated"])} END{print m+0}'`
-    maxFailTime=`jrEmitV2 "$jr" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JR_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOT/ {if($(col["timeAllocated"])>t)t=$(col["timeAllocated"])} END{print t+0}'`
+command -v nextMemAfterFail >/dev/null 2>&1 || { _savedJobRecordDir="$smartSbatchJobRecordDir"; . "$(dirname "$0")/../config/config.txt"; [ -n "$_savedJobRecordDir" ] && smartSbatchJobRecordDir="$_savedJobRecordDir"; }
+jobRecords=$smartSbatchJobRecordDir/jobRecords.txt
+if [ -f "$jobRecords" ] && echo "$inputSize" | grep -qE '^[0-9]+$'; then
+    recentFails=`jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v t="$(date -d '1 hour ago' +%s)" "$JOB_RECORDS_AWK_COLMAP"'$(col["pipeline"])==p && $(col["status"])!="COMPLETED" && ($(col["epoch"])+0)>t && $(col["step"])==a && $(col["ref"]) ~ rre' | wc -l`
+    maxFailMem=`jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JOB_RECORDS_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOM/ {if($(col["memAllocated"])>m)m=$(col["memAllocated"])} END{print m+0}'`
+    maxFailTime=`jobRecordsEmitV2 "$jobRecords" 2>/dev/null | awk -F, -v p="$pipeline" -v a="$program" -v rre="$refRe" -v sz="$inputSize" "$JOB_RECORDS_AWK_COLMAP"'$(col["pipeline"])==p && $(col["step"])==a && $(col["ref"]) ~ rre && $(col["inputSize"]) ~ /^[0-9]+$/ && $(col["inputSize"])<=sz && $(col["status"]) ~ /OOT/ {if($(col["timeAllocated"])>t)t=$(col["timeAllocated"])} END{print t+0}'`
     if [ "${maxFailMem:-0}" -gt 0 ]; then
         memFloor=`nextMemAfterFail "$maxFailMem" "$recentFails"`
         if [ "${memFloor:-0}" -gt "${mem:-0}" ]; then

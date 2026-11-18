@@ -88,7 +88,7 @@ fi
 mkdir -p $smartSbatchJobRecordDir/stats
 
 . "$(dirname "$0")/jobRecordSchema.sh"
-jrEnsureHeader "$smartSbatchJobRecordDir/jobRecords.txt"   # v2 header from the schema SSOT
+jobRecordsEnsureHeader "$smartSbatchJobRecordDir/jobRecords.txt"   # v2 header from the schema SSOT
 
 cmd="ssbatch"
 whitespace="[[:space:]]"

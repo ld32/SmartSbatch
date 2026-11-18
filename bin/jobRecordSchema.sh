@@ -7,7 +7,7 @@
 #
 # Writers (ssbatch/ssbatchSimple header, cleanUp row), readers
 # (estimateResource, calculateMemTime, cleanUp prune) and the repair tool
-# (jrRepair.sh) all take the column list and the name->index map from here, so
+# (jobRecordsRepair.sh) all take the column list and the name->index map from here, so
 # the layout is defined in exactly one place.
 #
 # Versioning is by HEADER SIGNATURE, not a marker line: a v2 file's header
@@ -20,24 +20,24 @@
 # notes (18th) is free text about how the row was made, e.g. "AI-found:program+inputs(cache)".
 # Stores written before it existed (17 columns) are upgraded in place on the next
 # write: header gains ",notes" and old rows get an empty notes field.
-JR_COLUMNS_V2="pipeline step ref sample jobID inputSize memUsed memAllocated timeUsed timeAllocated cores status user node epoch isoDate flag notes"
-JR_NCOLS_V2=18
-JR_HEADER_V2="$(printf '%s' "$JR_COLUMNS_V2" | tr ' ' ',')"
+JOB_RECORDS_COLUMNS_V2="pipeline step ref sample jobID inputSize memUsed memAllocated timeUsed timeAllocated cores status user node epoch isoDate flag notes"
+JOB_RECORDS_NCOLS_V2=18
+JOB_RECORDS_HEADER_V2="$(printf '%s' "$JOB_RECORDS_COLUMNS_V2" | tr ' ' ',')"
 
 # Required subset (every consumer depends on these; the rest are
 # readability/future and no reader may assume their presence/position).
-JR_REQUIRED_V2="pipeline step ref jobID inputSize memUsed timeUsed memAllocated timeAllocated status epoch"
+JOB_RECORDS_REQUIRED_V2="pipeline step ref jobID inputSize memUsed timeUsed memAllocated timeAllocated status epoch"
 
 # --- v1 (legacy) layout, for detection + migration only --------------------
 # The REAL 21-field order old cleanUp.sh wrote (the old header line was stale
-# and only named 18 of them). jrRepair reads old rows positionally via this.
-JR_COLUMNS_V1="jobID inputSize memDefault timeDefault memAllocated timeAllocated memUsed timeUsed status user saccMem program ref flag cores extraMem extraTime ratioM ratioT date epoch"
+# and only named 18 of them). jobRecordsRepair reads old rows positionally via this.
+JOB_RECORDS_COLUMNS_V1="jobID inputSize memDefault timeDefault memAllocated timeAllocated memUsed timeUsed status user saccMem program ref flag cores extraMem extraTime ratioM ratioT date epoch"
 
 # awk prelude: build col["name"]=index from the header row, then skip it.
-# Usage:  awk -F, "$JR_AWK_COLMAP"'{ print $(col["memUsed"]) }' jobRecords.txt
-JR_AWK_COLMAP='NR==1{for(i=1;i<=NF;i++)col[$i]=i; next}'
+# Usage:  awk -F, "$JOB_RECORDS_AWK_COLMAP"'{ print $(col["memUsed"]) }' jobRecords.txt
+JOB_RECORDS_AWK_COLMAP='NR==1{for(i=1;i<=NF;i++)col[$i]=i; next}'
 
-# jrSchemaVersion <file> -> prints 2, 1, or 0 (unknown/missing). Classifies by
+# jobRecordsSchemaVersion <file> -> prints 2, 1, or 0 (unknown/missing). Classifies by
 # scanning EVERY data row, not just the first line, so ORDERING and HEADERS never
 # fool it. This matters because a store can go hybrid in either direction: the old
 # writer appended v2 rows under a v1 file, and -- during a mixed-version cluster
@@ -51,14 +51,14 @@ JR_AWK_COLMAP='NR==1{for(i=1;i<=NF;i++)col[$i]=i; next}'
 #   * otherwise, any v2-shaped data row OR a lone v2 header -> 2 (clean v2).
 #   * otherwise (only a v1 header, or nothing recognizable) -> 1 if a v1 header is
 #     present, else 0. Blank lines and junk rows do not vote.
-jrSchemaVersion() {
+jobRecordsSchemaVersion() {
     local f=$1
     [ -s "$f" ] || { echo 0; return; }
     # Canonical v2 (a no-op for migration) means the v2 header LEADS the file and
     # no v1 row appears anywhere. Everything else recognizable is "needs
     # normalization" (1): v1/mixed stores, AND a headerless or mis-ordered v2 file
     # -- because the v2 prune treats line 1 as the header (NR==1), so a leading v2
-    # DATA row would be eaten. Migration (jrEmitV2) rewrites any of these to the
+    # DATA row would be eaten. Migration (jobRecordsEmitV2) rewrites any of these to the
     # canonical header-led form; a file with nothing recognizable is left alone (0).
     awk -F, '
         /^[[:space:]]*$/            { next }                       # blank line (no vote, no "first")
@@ -79,14 +79,14 @@ jrSchemaVersion() {
 
 # A row is RECOGNIZED iff it is a v1 record (numeric jobID, 20+ cols -- 20/21, or
 # more if a comma crept into the old date) or a v2 record (non-numeric first field,
-# 17 or 18 cols). Everything else (blank lines aside) is UNRECOGNIZED: jrEmitV2 drops it,
+# 17 or 18 cols). Everything else (blank lines aside) is UNRECOGNIZED: jobRecordsEmitV2 drops it,
 # so it must never vanish silently. These three helpers share ONE definition of
-# "recognized", matching jrEmitV2 exactly, so the migration integrity check and the
+# "recognized", matching jobRecordsEmitV2 exactly, so the migration integrity check and the
 # warnings can't disagree with what conversion actually did.
 
-# jrUnrecognizedLines <file> -> emit the unrecognized rows verbatim (for a .skipped
-# / .unrecognized divert file and for jrRepair). Blank lines and headers excluded.
-jrUnrecognizedLines() {
+# jobRecordsUnrecognizedLines <file> -> emit the unrecognized rows verbatim (for a .skipped
+# / .unrecognized divert file and for jobRecordsRepair). Blank lines and headers excluded.
+jobRecordsUnrecognizedLines() {
     [ -s "$1" ] || return 0
     awk -F, '
         /^[[:space:]]*$/            { next }
@@ -95,10 +95,10 @@ jrUnrecognizedLines() {
         $1 !~ /^[0-9]+$/ && (NF==17 || NF==18) { next }
         { print }' "$1" 2>/dev/null
 }
-# jrCountUnrecognized <file> -> how many such rows.
-jrCountUnrecognized() { jrUnrecognizedLines "$1" | grep -c . ; }
-# jrCountRecognized <file> -> how many v1+v2 data rows (the ones jrEmitV2 keeps).
-jrCountRecognized() {
+# jobRecordsCountUnrecognized <file> -> how many such rows.
+jobRecordsCountUnrecognized() { jobRecordsUnrecognizedLines "$1" | grep -c . ; }
+# jobRecordsCountRecognized <file> -> how many v1+v2 data rows (the ones jobRecordsEmitV2 keeps).
+jobRecordsCountRecognized() {
     [ -s "$1" ] || { echo 0; return; }
     awk -F, '
         ($1=="pipeline" && $2=="step") || $1=="1jobID" { next }
@@ -106,16 +106,16 @@ jrCountRecognized() {
         END { print c+0 }' "$1" 2>/dev/null
 }
 
-# jrLint <file> -- print a human health report of a store to stdout (schema
+# jobRecordsLint <file> -- print a human health report of a store to stdout (schema
 # version + a row-shape census + the line numbers of unrecognized rows). Pure
-# read; changes nothing. The audit tool behind `jrRepair.sh --check` so a stale
+# read; changes nothing. The audit tool behind `jobRecordsRepair.sh --check` so a stale
 # or malformed store on a real cluster is a visible finding, never a silent one.
 # Returns 0 if the store is clean (v1 or v2, no unrecognized rows), 1 otherwise.
-jrLint() {
+jobRecordsLint() {
     local f=$1 ver
     if [ ! -f "$f" ]; then echo "  $f: (absent)"; return 0; fi
     if [ ! -s "$f" ]; then echo "  $f: (empty)"; return 0; fi
-    ver=$(jrSchemaVersion "$f")
+    ver=$(jobRecordsSchemaVersion "$f")
     awk -F, -v file="$f" -v ver="$ver" '
         /^[[:space:]]*$/            { blank++; next }
         $1=="pipeline" && $2=="step" { h2++; next }
@@ -140,14 +140,14 @@ jrLint() {
         }' "$f"
 }
 
-# _jrWarnUnknown <file> -- warn (once per file state) that a store matches no known
+# _jobRecordsWarnUnknown <file> -- warn (once per file state) that a store matches no known
 # schema. Deduped via a marker so a per-job hot path (ssbatch/cleanUp) does not
 # flood: we warn again only after the file changes (marker older than the file).
-_jrWarnUnknown() {
+_jobRecordsWarnUnknown() {
     local f=$1 m="$1.schemaWarning"
     [ -f "$m" ] && [ ! "$f" -nt "$m" ] && return 0
     echo "SmartSbatch: WARNING: jobRecord store matches no known schema (not v1 or v2); left untouched: $f" >&2
-    echo "SmartSbatch:          inspect it with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+    echo "SmartSbatch:          inspect it with: jobRecordsRepair.sh --check \"$(dirname -- "$f")\"" >&2
     : > "$m" 2>/dev/null
 }
 
@@ -156,28 +156,28 @@ _jrWarnUnknown() {
 # goes through these so no two writers can interleave and no tool can hand-roll the
 # format. The lock is a directory (mkdir is atomic even on NFS, unlike flock), held
 # only for the critical section. A crashed holder cannot wedge the cluster: waiters
-# reclaim a lock older than JR_LOCK_STALE seconds, and give up waiting after a bound.
+# reclaim a lock older than JOB_RECORDS_LOCK_STALE seconds, and give up waiting after a bound.
 # ---------------------------------------------------------------------------
-JR_LOCK_STALE="${JR_LOCK_STALE:-30}"   # seconds before a held lock is treated as stale
-JR_LOCK_TRIES="${JR_LOCK_TRIES:-200}"  # poll attempts (x0.05s) before giving up waiting
+JOB_RECORDS_LOCK_STALE="${JOB_RECORDS_LOCK_STALE:-30}"   # seconds before a held lock is treated as stale
+JOB_RECORDS_LOCK_TRIES="${JOB_RECORDS_LOCK_TRIES:-200}"  # poll attempts (x0.05s) before giving up waiting
 
-# _jrLock <file> -> 0 if the lock was acquired (caller MUST _jrUnlock), 1 on timeout.
-_jrLock() {
+# _jobRecordsLock <file> -> 0 if the lock was acquired (caller MUST _jobRecordsUnlock), 1 on timeout.
+_jobRecordsLock() {
     local lock="$1.lock" i=0 age now
     while :; do
         mkdir "$lock" 2>/dev/null && return 0
         # reclaim a stale lock (holder likely died mid-write)
         now=$(date +%s); age=$(( now - $(stat -c %Y "$lock" 2>/dev/null || echo "$now") ))
-        [ "$age" -ge "$JR_LOCK_STALE" ] && rmdir "$lock" 2>/dev/null && continue
-        i=$((i+1)); [ "$i" -ge "$JR_LOCK_TRIES" ] && return 1
+        [ "$age" -ge "$JOB_RECORDS_LOCK_STALE" ] && rmdir "$lock" 2>/dev/null && continue
+        i=$((i+1)); [ "$i" -ge "$JOB_RECORDS_LOCK_TRIES" ] && return 1
         sleep 0.05
     done
 }
-_jrUnlock() { rmdir "$1.lock" 2>/dev/null; }
+_jobRecordsUnlock() { rmdir "$1.lock" 2>/dev/null; }
 
-# _jrMigrateUnlocked <file> -- the migration body WITHOUT taking the lock (the
+# _jobRecordsMigrateUnlocked <file> -- the migration body WITHOUT taking the lock (the
 # caller already holds it). Converts a v1/mixed/headerless-v2 store to canonical
-# v2 in place: back up, convert via jrEmitV2, VERIFY the result, atomic rename.
+# v2 in place: back up, convert via jobRecordsEmitV2, VERIFY the result, atomic rename.
 #
 # Post-conversion integrity gate (never commit a bad conversion): the temp output
 # must (a) be canonical v2, and (b) preserve EVERY recognizable (v1+v2) input row
@@ -187,102 +187,102 @@ _jrUnlock() { rmdir "$1.lock" 2>/dev/null; }
 # live store is left untouched, the redundant backup is removed, and it errors
 # loudly. NOT SILENT about dropped rows (saved to a .unrecognized file + backup) or
 # an unrecognized file.
-_jrMigrateUnlocked() {
+_jobRecordsMigrateUnlocked() {
     local f=$1 ver bak tmp bad recog outrows unrec
-    ver=$(jrSchemaVersion "$f")
+    ver=$(jobRecordsSchemaVersion "$f")
     [ "$ver" = 2 ] && return 0
-    if [ "$ver" = 0 ]; then _jrWarnUnknown "$f"; return 0; fi
+    if [ "$ver" = 0 ]; then _jobRecordsWarnUnknown "$f"; return 0; fi
     bak="$f.back.$(date +%Y-%m-%d_%H-%M-%S).txt"
     cp -p "$f" "$bak" 2>/dev/null
-    bad=$(jrCountUnrecognized "$f")
-    recog=$(jrCountRecognized "$f")
+    bad=$(jobRecordsCountUnrecognized "$f")
+    recog=$(jobRecordsCountRecognized "$f")
     tmp="$f.v2.$$"
-    if ! jrEmitV2 "$f" > "$tmp" || [ ! -s "$tmp" ]; then
+    if ! jobRecordsEmitV2 "$f" > "$tmp" || [ ! -s "$tmp" ]; then
         rm -f "$tmp" "$bak"
         echo "SmartSbatch: ERROR: jobRecord migration produced no output; store left UNTOUCHED: $f" >&2
         return 1
     fi
     # integrity gate ------------------------------------------------------------
     outrows=$(( $(grep -c . "$tmp") - 1 ))              # data rows (minus the header)
-    if [ "$(jrSchemaVersion "$tmp")" != 2 ] || [ "${outrows:-0}" -ne "${recog:-0}" ]; then
+    if [ "$(jobRecordsSchemaVersion "$tmp")" != 2 ] || [ "${outrows:-0}" -ne "${recog:-0}" ]; then
         rm -f "$tmp" "$bak"
-        echo "SmartSbatch: ERROR: jobRecord migration failed its integrity check (output canonical-v2? / kept ${outrows:-0} of ${recog:-0} recognizable rows); store left UNTOUCHED: $f -- inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+        echo "SmartSbatch: ERROR: jobRecord migration failed its integrity check (output canonical-v2? / kept ${outrows:-0} of ${recog:-0} recognizable rows); store left UNTOUCHED: $f -- inspect with: jobRecordsRepair.sh --check \"$(dirname -- "$f")\"" >&2
         return 1
     fi
     # commit --------------------------------------------------------------------
     mv "$tmp" "$f"
     if [ "${bad:-0}" -gt 0 ]; then
         unrec="$f.unrecognized.$(date +%Y-%m-%d_%H-%M-%S).txt"
-        jrUnrecognizedLines "$bak" > "$unrec" 2>/dev/null
-        echo "SmartSbatch: WARNING: migrated $f to v2; $bad row(s) matched no known schema and were NOT carried over (saved to $unrec; full original in $bak). Inspect with: jrRepair.sh --check \"$(dirname -- "$f")\"" >&2
+        jobRecordsUnrecognizedLines "$bak" > "$unrec" 2>/dev/null
+        echo "SmartSbatch: WARNING: migrated $f to v2; $bad row(s) matched no known schema and were NOT carried over (saved to $unrec; full original in $bak). Inspect with: jobRecordsRepair.sh --check \"$(dirname -- "$f")\"" >&2
     else
         echo "SmartSbatch: migrated legacy jobRecord to v2 schema: $f (backup: $bak)" >&2
     fi
 }
 
-# jrMigrateStore <file> -- public, locked, idempotent migration of a legacy (v1)/
+# jobRecordsMigrateStore <file> -- public, locked, idempotent migration of a legacy (v1)/
 # mixed store to pure v2, so the v2 writer/prune never operate on a mixed file (the
 # cause of the data-loss bug: the v1-positional prune deleted appended v2 rows).
-# The backup (<file>.back.<ts>.txt) is the rollback, same as jrRepair.
-jrMigrateStore() {
+# The backup (<file>.back.<ts>.txt) is the rollback, same as jobRecordsRepair.
+jobRecordsMigrateStore() {
     local f=$1 ver
     [ -s "$f" ] || return 0
-    ver=$(jrSchemaVersion "$f")
+    ver=$(jobRecordsSchemaVersion "$f")
     [ "$ver" = 2 ] && return 0                 # already clean v2 -> no-op (no lock needed)
-    if [ "$ver" = 0 ]; then _jrWarnUnknown "$f"; return 0; fi
-    if _jrLock "$f"; then
-        _jrMigrateUnlocked "$f"                # re-checks version under the lock
-        _jrUnlock "$f"
+    if [ "$ver" = 0 ]; then _jobRecordsWarnUnknown "$f"; return 0; fi
+    if _jobRecordsLock "$f"; then
+        _jobRecordsMigrateUnlocked "$f"                # re-checks version under the lock
+        _jobRecordsUnlock "$f"
     fi
     # lock timeout -> another job is migrating; it will become v2 shortly. A reader
-    # (jrEmitV2) is hybrid-safe meanwhile, so skipping here loses nothing.
+    # (jobRecordsEmitV2) is hybrid-safe meanwhile, so skipping here loses nothing.
 }
 
-# jrEnsureHeader <file> -- make sure the store exists AND is v2 before writing:
+# jobRecordsEnsureHeader <file> -- make sure the store exists AND is v2 before writing:
 # create it with the v2 header if absent, else migrate a v1/mixed store in place.
-jrEnsureHeader() {
-    if [ ! -f "$1" ]; then printf '%s\n' "$JR_HEADER_V2" > "$1"; return 0; fi
-    jrMigrateStore "$1"
+jobRecordsEnsureHeader() {
+    if [ ! -f "$1" ]; then printf '%s\n' "$JOB_RECORDS_HEADER_V2" > "$1"; return 0; fi
+    jobRecordsMigrateStore "$1"
 }
 
-# jrAppendLine <file> <preformatted-v2-row> -- the ONE sanctioned way to append a
+# jobRecordsAppendLine <file> <preformatted-v2-row> -- the ONE sanctioned way to append a
 # row. Under the lock it: creates the v2 header if the file is new, migrates a
 # v1/mixed store to v2 first (so we never append a v2 row onto a v1 file and make a
 # hybrid), then appends atomically. If the lock cannot be taken in time it appends
 # anyway and warns -- a possibly-interleaved row is far better than a LOST record.
-jrAppendLine() {
+jobRecordsAppendLine() {
     local f=$1 row=$2
-    if _jrLock "$f"; then
-        [ -f "$f" ] || printf '%s\n' "$JR_HEADER_V2" > "$f"
-        _jrMigrateUnlocked "$f"
+    if _jobRecordsLock "$f"; then
+        [ -f "$f" ] || printf '%s\n' "$JOB_RECORDS_HEADER_V2" > "$f"
+        _jobRecordsMigrateUnlocked "$f"
         printf '%s\n' "$row" >> "$f"
-        _jrUnlock "$f"
+        _jobRecordsUnlock "$f"
     else
-        [ -f "$f" ] || printf '%s\n' "$JR_HEADER_V2" > "$f"
+        [ -f "$f" ] || printf '%s\n' "$JOB_RECORDS_HEADER_V2" > "$f"
         printf '%s\n' "$row" >> "$f"
         echo "SmartSbatch: WARNING: jobRecord append proceeded WITHOUT the lock (contention/stale): $f" >&2
     fi
 }
 
-# jrAppendRow <file> name=value ... -- build a sanitized v2 row with jrRow and
-# append it via jrAppendLine. The convenience front door for writers.
-jrAppendRow() {
+# jobRecordsAppendRow <file> name=value ... -- build a sanitized v2 row with jobRecordsRow and
+# append it via jobRecordsAppendLine. The convenience front door for writers.
+jobRecordsAppendRow() {
     local f=$1; shift
-    jrAppendLine "$f" "$(jrRow "$@")"
+    jobRecordsAppendLine "$f" "$(jobRecordsRow "$@")"
 }
 
-# jrRewrite <file> <awk-row-program> [awk -v args ...] -- the ONE sanctioned way to
+# jobRecordsRewrite <file> <awk-row-program> [awk -v args ...] -- the ONE sanctioned way to
 # prune/rewrite a store. Under the lock it migrates to v2, then runs the row program
 # over every DATA row with col["name"] available (OFS=","), keeping rows the program
 # `print`s; the header is always preserved. Atomic (temp + rename). The two prunes
 # (7-day recency, fail-prune) are one call each -- no positional columns, no second
 # colmap, no v1 fallback. Skips a store that is not (or cannot become) v2.
-jrRewrite() {
+jobRecordsRewrite() {
     local f=$1 prog=$2; shift 2
     [ -s "$f" ] || return 0
-    _jrLock "$f" || return 0
-    _jrMigrateUnlocked "$f"
-    if [ "$(jrSchemaVersion "$f")" = 2 ]; then
+    _jobRecordsLock "$f" || return 0
+    _jobRecordsMigrateUnlocked "$f"
+    if [ "$(jobRecordsSchemaVersion "$f")" = 2 ]; then
         local tmp="$f.rw.$$"
         if awk -F, -v OFS=, "$@" '
                 NR==1 { for(i=1;i<=NF;i++) col[$i]=i; print; next }
@@ -293,12 +293,12 @@ jrRewrite() {
             rm -f "$tmp"
         fi
     fi
-    _jrUnlock "$f"
+    _jobRecordsUnlock "$f"
 }
 
-# jrRow name=value ... -> one CSV row with the fields placed in JR_COLUMNS_V2 order.
+# jobRecordsRow name=value ... -> one CSV row with the fields placed in JOB_RECORDS_COLUMNS_V2 order.
 # Unspecified columns are emitted empty. This is the single writer: callers name
-# fields, so the on-disk column order lives only in JR_COLUMNS_V2 and a row can
+# fields, so the on-disk column order lives only in JOB_RECORDS_COLUMNS_V2 and a row can
 # never silently drift from the header. Portable (no associative arrays).
 #
 # SANITIZED: every value has commas, spaces, tabs and CRs/newlines replaced with
@@ -308,9 +308,9 @@ jrRewrite() {
 # could gain an extra field and shift the rest. A v2 row can never do that. Keys
 # (pipeline/step/ref/sample) are tokens and should not contain spaces anyway; if
 # one does, it is normalized identically on every write so it stays self-consistent.
-jrRow() {
+jobRecordsRow() {
     local c kv val out=""
-    for c in $JR_COLUMNS_V2; do
+    for c in $JOB_RECORDS_COLUMNS_V2; do
         val=""
         for kv in "$@"; do
             case "$kv" in "$c="*) val="${kv#*=}"; break ;; esac
@@ -322,9 +322,9 @@ jrRow() {
     printf '%s\n' "${out#,}"
 }
 
-# jrEmitV2 <file> -- write the store to stdout in v2 form (header + rows),
+# jobRecordsEmitV2 <file> -- write the store to stdout in v2 form (header + rows),
 # converting legacy v1 rows on the fly. This is the compat shim for READ-ONLY
-# readers and the single definition of the v1->v2 field mapping (jrRepair.sh and
+# readers and the single definition of the v1->v2 field mapping (jobRecordsRepair.sh and
 # the auto-migration reuse it).
 #
 # It classifies PER ROW, not per file, so it is correct for every real variant:
@@ -336,7 +336,7 @@ jrRow() {
 #     pre-notes v2 row (17 fields) gets an empty notes field appended
 #   * a v1 data row (numeric jobID in field 1, 20+ fields) -> mapped to v2
 #     (inputSize is carried verbatim, even non-numeric like "missingInputFile")
-#   * anything else (junk / unexpected shape) -> skipped (jrRepair diverts these
+#   * anything else (junk / unexpected shape) -> skipped (jobRecordsRepair diverts these
 #     to a .skipped file so they are visible, not silently lost)
 #
 # ROBUST field extraction: the legacy human `date` column (from `date`) carries
@@ -349,10 +349,10 @@ jrRow() {
 # is always exactly 18 clean fields. isoDate is carried (sanitized) only when the
 # row has a clean width (<=21); on a comma-shifted row it is left blank -- epoch,
 # the authoritative timestamp, is preserved either way.
-jrEmitV2() {
+jobRecordsEmitV2() {
     local f=$1
     [ -s "$f" ] || return 0
-    awk -F, -v OFS=, -v hdr="$JR_HEADER_V2" '
+    awk -F, -v OFS=, -v hdr="$JOB_RECORDS_HEADER_V2" '
       function sampleOf(fl,  n,a,i){ n=split(fl,a,"."); if(n<2 || a[1]!~/^[0-9]+$/)return ""; i=2;
           while(i<=n && a[i]~/^[0-9]+$/) i++; i++; return (i<=n)?a[i]:"" }
       function san(x){ gsub(/[, \t\r]/,"_",x); return x }
@@ -371,14 +371,14 @@ jrEmitV2() {
     ' "$f"
 }
 
-# jrSampleFromFlag <flag> -> the per-sample identifier, or "" (experiment-level).
+# jobRecordsSampleFromFlag <flag> -> the per-sample identifier, or "" (experiment-level).
 # Flag grammar (rAP): step.dep[.dep...].name[.sample[.fanout...]] where step and
 # the deps are numeric. So: skip field 1 (step) and any numeric deps, the next
-# field is the step name, and the one after that is the sample. (jrRepair.sh does
+# field is the step name, and the one after that is the sample. (jobRecordsRepair.sh does
 # the same in awk for stream conversion; keep the two in sync.)
 # A flag whose first field is not a numeric step is not a pipeline flag (e.g. a
 # standalone ssbatch job's "program.input.txt"); it has no sample, so return "".
-jrSampleFromFlag() {
+jobRecordsSampleFromFlag() {
     local flag=$1 i n s
     local IFS=.
     set -- $flag
@@ -397,37 +397,37 @@ jrSampleFromFlag() {
 
 # --- optional ref size-class pooling ---------------------------------------
 # Some refs are close enough in size that a tool's resource use is comparable;
-# pooling their history gives better fits. JR_REF_CLASS maps "ref=class" pairs
+# pooling their history gives better fits. JOB_RECORDS_REF_CLASS maps "ref=class" pairs
 # (space-separated). Default pools the common mammalian genomes (mouse + human,
-# all ~3 Gbp). Override by setting JR_REF_CLASS in the environment/config, or ""
+# all ~3 Gbp). Override by setting JOB_RECORDS_REF_CLASS in the environment/config, or ""
 # to disable (each ref is its own group). "none" (ref-less tools) never pools.
-JR_REF_CLASS="${JR_REF_CLASS-mm9=mammal mm10=mammal mm39=mammal hg19=mammal hg38=mammal GRCm38=mammal GRCm39=mammal GRCh37=mammal GRCh38=mammal}"
+JOB_RECORDS_REF_CLASS="${JOB_RECORDS_REF_CLASS-mm9=mammal mm10=mammal mm39=mammal hg19=mammal hg38=mammal GRCm38=mammal GRCm39=mammal GRCh37=mammal GRCh38=mammal}"
 
-# jrRefClass <ref> -> the group name for <ref> (the mapped class, or <ref> itself).
-jrRefClass() {
+# jobRecordsRefClass <ref> -> the group name for <ref> (the mapped class, or <ref> itself).
+jobRecordsRefClass() {
     local r=$1 pair
     [ "$r" = none ] && { printf 'none'; return; }
-    for pair in $JR_REF_CLASS; do
+    for pair in $JOB_RECORDS_REF_CLASS; do
         case "$pair" in "$r"=*) printf '%s' "${pair#*=}"; return ;; esac
     done
     printf '%s' "$r"
 }
 
-# jrRefMatchRe <ref> -> an ERE matching every ref in the same group (so an extract
+# jobRecordsRefMatchRe <ref> -> an ERE matching every ref in the same group (so an extract
 # can pull the whole class). Unmapped ref -> exact match on itself.
-jrRefMatchRe() {
+jobRecordsRefMatchRe() {
     local r=$1 cls pair members=""
-    cls=$(jrRefClass "$r")
+    cls=$(jobRecordsRefClass "$r")
     [ "$cls" = "$r" ] && { printf '^%s$' "$r"; return; }
-    for pair in $JR_REF_CLASS; do
+    for pair in $JOB_RECORDS_REF_CLASS; do
         case "$pair" in *="$cls") members="$members|${pair%=*}" ;; esac
     done
     printf '^(%s)$' "${members#|}"
 }
 
-# jrcol <name> <headerLine> -> prints the 1-based column index of <name> in a
+# jobRecordsCol <name> <headerLine> -> prints the 1-based column index of <name> in a
 # comma-separated header line, or empty if absent. For bash-side callers.
-jrcol() {
+jobRecordsCol() {
     local name=$1 header=$2 i=1 c
     local IFS=,
     for c in $header; do

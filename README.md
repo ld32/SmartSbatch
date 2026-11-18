@@ -290,7 +290,7 @@ pipeline,step,ref,sample,jobID,inputSize,memUsed,memAllocated,timeUsed,timeAlloc
 
 **`notes`** records anything worth knowing about how a row was produced. When [AI detection](#automatic-program-and-input-detection) filled in part of the job, it says what and how: `AI-found:program+inputs(ai)` (a fresh AI call) or `AI-found:program+ref+inputs(cache)` (answered from the cache). It is empty when you gave `-P`/`-R`/`-I` yourself. Files written before this column existed (17 columns) are upgraded automatically on the next write: the header gains `notes` and old rows get an empty value (a backup is made first).
 
-The **pipeline** of a step is set with `runAsPipeline --pipeline NAME` (or defaults to the script's basename). Refs of similar size can optionally be **pooled** so their history combines — see `JR_REF_CLASS` (default pools the common mouse/human genomes `mm*`/`hg*`/`GRC*`; set it to `""` to disable).
+The **pipeline** of a step is set with `runAsPipeline --pipeline NAME` (or defaults to the script's basename). Refs of similar size can optionally be **pooled** so their history combines — see `JOB_RECORDS_REF_CLASS` (default pools the common mouse/human genomes `mm*`/`hg*`/`GRC*`; set it to `""` to disable).
 
 Example rows:
 
@@ -303,9 +303,9 @@ unknown,bwa-mem-4core,hg38,A_R1.fq.gz,46590,1339,5210,8192,42,120,4,COMPLETED,ld
 > [!IMPORTANT]
 > **Upgrading from the old format.** Earlier SmartSbatch wrote a different, position-based `jobRecords.txt` (21 columns), and later versions had 17 columns without `notes`. You do not need to do anything: the first job that writes a record converts the file in place to the current format, after saving a backup as `jobRecords.txt.back.<timestamp>.txt` (your rollback). To check or convert a store yourself:
 > ```bash
-> jrRepair.sh --check    # report the format and any rows that do not fit it; changes nothing
-> jrRepair.sh --dry-run  # preview the conversion, writes nothing
-> jrRepair.sh            # convert $smartSbatchJobRecordDir/jobRecords.txt now
+> jobRecordsRepair.sh --check    # report the format and any rows that do not fit it; changes nothing
+> jobRecordsRepair.sh --dry-run  # preview the conversion, writes nothing
+> jobRecordsRepair.sh            # convert $smartSbatchJobRecordDir/jobRecords.txt now
 > ```
 > Old rows carry no pipeline id, so they are tagged `pipeline=legacy`; new runs tagged with a real pipeline fall back to pooling that history until they accumulate their own. Rows that match no known format are never dropped silently: they are saved to `jobRecords.txt.unrecognized.<timestamp>.txt`.
 
@@ -1270,13 +1270,13 @@ This is the reference for code that reads or writes [`jobRecords.txt`](#jobrecor
 
 ## Rules for readers and writers
 
-- **Read columns by name, never by position.** Use the awk prelude `JR_AWK_COLMAP` (`NR==1{for(i=1;i<=NF;i++)col[$i]=i; next}`, then `$(col["memUsed"])`), the bash helper `jrcol <name> <header>`, or `csv.DictReader` in Python (as `reviewJobRecords.py` does). This is what lets a column such as `notes` be added without breaking anything.
-- **Read through `jrEmitV2 <file>`.** It returns the store in the current format whatever is on disk (old 21-column rows, 17-column rows, mixed files), so a reader never has to care which version a user still has.
-- **Write only through `jrRow` / `jrAppendRow`** (one row, fields given as `name=value`) and **rewrite only through `jrRewrite`** (prunes). These place fields in the right column order, replace commas, spaces, tabs and newlines in values with `_` so every row has exactly the header's number of fields, take a lock (a `mkdir` lock, safe on NFS; a stale lock is reclaimed after `JR_LOCK_STALE` seconds), and convert an old-format store before writing to it. `cleanUp.sh` is the only place that writes rows.
+- **Read columns by name, never by position.** Use the awk prelude `JOB_RECORDS_AWK_COLMAP` (`NR==1{for(i=1;i<=NF;i++)col[$i]=i; next}`, then `$(col["memUsed"])`), the bash helper `jobRecordsCol <name> <header>`, or `csv.DictReader` in Python (as `reviewJobRecords.py` does). This is what lets a column such as `notes` be added without breaking anything.
+- **Read through `jobRecordsEmitV2 <file>`.** It returns the store in the current format whatever is on disk (old 21-column rows, 17-column rows, mixed files), so a reader never has to care which version a user still has.
+- **Write only through `jobRecordsRow` / `jobRecordsAppendRow`** (one row, fields given as `name=value`) and **rewrite only through `jobRecordsRewrite`** (prunes). These place fields in the right column order, replace commas, spaces, tabs and newlines in values with `_` so every row has exactly the header's number of fields, take a lock (a `mkdir` lock, safe on NFS; a stale lock is reclaimed after `JOB_RECORDS_LOCK_STALE` seconds), and convert an old-format store before writing to it. `cleanUp.sh` is the only place that writes rows.
 
 ## Columns: why each exists
 
-Eleven columns are **required** (`JR_REQUIRED_V2`); estimation, pruning and failure analysis do not work without them:
+Eleven columns are **required** (`JOB_RECORDS_REQUIRED_V2`); estimation, pruning and failure analysis do not work without them:
 
 | Column | Used for |
 |---|---|
@@ -1292,7 +1292,7 @@ The rest are cheap to record and kept for people and future analysis; no code ma
 
 ## Version detection
 
-The **header is the version**; there is no marker line. `jrSchemaVersion <file>` scans every row, not just the first, because stores can be mixed (an old node appending old-format rows into a converted store):
+The **header is the version**; there is no marker line. `jobRecordsSchemaVersion <file>` scans every row, not just the first, because stores can be mixed (an old node appending old-format rows into a converted store):
 
 | On disk | Detected as | Action on next write |
 |---|---|---|
@@ -1300,7 +1300,7 @@ The **header is the version**; there is no marker line. `jrSchemaVersion <file>`
 | any 20/21-field row with a numeric first field (old format), any 17-field row or header (before `notes`), or no header first | needs conversion | convert in place (backup first) |
 | nothing recognisable | unknown | left untouched, with a warning |
 
-Conversion is checked before it is committed: the new file must be in the current format and keep every recognisable row, or the store is left untouched and an error is printed. `jrRepair.sh --check` prints the same report for a human.
+Conversion is checked before it is committed: the new file must be in the current format and keep every recognisable row, or the store is left untouched and an error is printed. `jobRecordsRepair.sh --check` prints the same report for a human.
 
 ## Mapping from the old 21-column format
 
@@ -1312,11 +1312,11 @@ Old order: `jobID inputSize memDefault timeDefault memAllocated timeAllocated me
 
 ## Reference pooling
 
-`JR_REF_CLASS` maps references of similar size to one group so their history is fitted together. The default pools mouse and human (`mm9 mm10 mm39 hg19 hg38 GRCm38 GRCm39 GRCh37 GRCh38` → `mammal`). Set it to `""` to fit every reference separately. `none` (tools without a reference) is never pooled.
+`JOB_RECORDS_REF_CLASS` maps references of similar size to one group so their history is fitted together. The default pools mouse and human (`mm9 mm10 mm39 hg19 hg38 GRCm38 GRCm39 GRCh37 GRCh38` → `mammal`). Set it to `""` to fit every reference separately. `none` (tools without a reference) is never pooled.
 
 ## Fitting performance
 
-`estimateResource.sh` builds the memory and time extracts for a fit in **one** pass over the store (`jrExtractBoth`), and only when the cached fit is stale, because the store is shared and keeps growing. gnuplot does the fit; its results (`Finala`, `Finalb`, `STDFIT`, …) are printed by gnuplot itself rather than scraped from `fit.log`, which avoids a race between concurrent jobs.
+`estimateResource.sh` builds the memory and time extracts for a fit in **one** pass over the store (`jobRecordsExtractBoth`), and only when the cached fit is stale, because the store is shared and keeps growing. gnuplot does the fit; its results (`Finala`, `Finalb`, `STDFIT`, …) are printed by gnuplot itself rather than scraped from `fit.log`, which avoids a race between concurrent jobs.
 
 ---
 

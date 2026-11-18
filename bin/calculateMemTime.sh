@@ -23,9 +23,9 @@ pipeline=${4:-unknown}
 
 # v2 grouping: stats files are keyed per (pipeline, step, refGroup) -- must match
 # the key estimateResource.sh writes. refGroup applies optional ref size-class
-# pooling (jrRefClass); falls back to the ref itself.
+# pooling (jobRecordsRefClass); falls back to the ref itself.
 . "$(dirname "$0")/jobRecordSchema.sh" 2>/dev/null
-refGroup=$(jrRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
+refGroup=$(jobRecordsRefClass "$ref" 2>/dev/null); [ -n "$refGroup" ] || refGroup="$ref"
 statKey="$pipeline.$software.$refGroup"
 
 # Target first-pass completion rate (issue B1). Used as the percentile for the
